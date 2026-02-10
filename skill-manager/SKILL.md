@@ -1,38 +1,62 @@
 ---
 name: skill-manager
-description: A meta-skill for managing, indexing, and discovering other Antigravity skills.
+description: "A package manager and index generator for AI agent skills."
 ---
 
 # Skill Manager
 
-This skill is designed to help you organize and discover the skills available in your environment. As the number of skills grows, it becomes crucial to have an automated way to track them.
+This skill manages the installation, updating, and indexing of AI agent skills. Think of it as `npm` or `pip` for agent skills.
 
 ## Capabilities
 
-1.  **Index Skills**: Scan the `~/Skills` directory and generate a summary of all available skills.
-2.  **Health Check**: (Future) Verify that all skills follow the correct format and have valid `SKILL.md` files.
+1.  **Install Skills (`install`)**: Download and install skill packages from GitHub.
+2.  **Update Skills (`update`)**: Pull latest changes for installed skills.
+3.  **List Skills (`list`)**: Show all installed skills (global and local).
+4.  **Remove Skills (`remove`)**: Uninstall a skill.
+5.  **Index Skills**: Generate an index of available skills.
 
-## Instructions
+## Usage
 
-### Setup
-
-Before using this skill, ensure you have the necessary dependencies installed:
-
+### Install a Skill
 ```bash
-bash ~/Skills/skill-manager/scripts/setup_env.sh
+# Install globally (to ~/.skills)
+python3 ~/Skills/skill-manager/scripts/skill_manager.py install https://github.com/PCHANUL/Skills.git
+
+# Install locally (to ./.skills in current project)
+python3 ~/Skills/skill-manager/scripts/skill_manager.py install https://github.com/PCHANUL/Skills.git --local
 ```
 
-### How to Index Skills
-
-To generate an up-to-date index of all skills, run the following command:
-
+### Update Skills
 ```bash
-python3 ~/Skills/skill-manager/scripts/index_skills.py
+# Update all installed skills
+python3 ~/Skills/skill-manager/scripts/skill_manager.py update
+
+# Update a specific skill
+python3 ~/Skills/skill-manager/scripts/skill_manager.py update Skills
 ```
 
-This will output a list of skills with their descriptions to the console. You can also redirect this output to a file if needed.
+### List Installed Skills
+```bash
+python3 ~/Skills/skill-manager/scripts/skill_manager.py list
+```
+
+### Remove a Skill
+```bash
+python3 ~/Skills/skill-manager/scripts/skill_manager.py remove Skills
+```
+
+### Index Skills (Legacy)
+```bash
+python3 ~/Skills/skill-manager/scripts/index_skills.py ~/Skills
+```
+
+## Storage Locations
+
+-   **Global**: `~/.skills/` (shared across all projects)
+-   **Local**: `./.skills/` (project-specific, add to `.gitignore` if needed)
 
 ## Scripts
 
-- `scripts/index_skills.py`: Scans directories for `SKILL.md` files, parses their YAML frontmatter, and reports the findings.
-- `scripts/setup_env.sh`: Installs required Python dependencies (PyYAML).
+-   `scripts/skill_manager.py`: Main CLI for install/update/list/remove.
+-   `scripts/index_skills.py`: Generates skill index from SKILL.md files.
+-   `scripts/setup_env.sh`: Installs required Python dependencies (PyYAML).

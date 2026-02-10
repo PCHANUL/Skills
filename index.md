@@ -9,16 +9,22 @@ UI/UX design intelligence. 50 styles, 21 palettes, 50 font pairings, 20 charts, 
 The core implementation agent: Analyzes requirements -> Breaks down into sub-tasks -> Implements iteratively -> Verifies code.
 
 ## [skill-manager](./skill-manager/SKILL.md)
-A meta-skill for managing, indexing, and discovering other Antigravity skills.
+A package manager and index generator for AI agent skills.
 
 ## [senior-architect](./senior-architect/SKILL.md)
 Comprehensive software architecture skill for designing scalable, maintainable systems using ReactJS, NextJS, NodeJS, Express, React Native, Swift, Kotlin, Flutter, Postgres, GraphQL, Go, Python. Includes architecture diagram generation, system design patterns, tech stack decision frameworks, and dependency analysis. Use when designing system architecture, making technical decisions, creating architecture diagrams, evaluating trade-offs, or defining integration patterns.
+
+## [project-task-debugger](./project-task-debugger/SKILL.md)
+Self-Healing Agent: Analyzes failures, proposes fixes, and retries using iterative debugging loops.
 
 ## [project-planner](./project-planner/SKILL.md)
 A skill for generating highly detailed, phase-based project task lists in Markdown format.
 
 ## [project-setup](./project-setup/SKILL.md)
 A skill for automating GitHub Milestones and Issues creation based on a structured task list (from task-manager).
+
+## [github-actions-template](./github-actions-template/SKILL.md)
+Turn your repository into a Self-Running Project with GitHub Actions.
 
 ## [github](./github/SKILL.md)
 A skill for managing GitHub projects, issues, and pull requests using the gh CLI.
@@ -40,4 +46,7 @@ The orchestrator that drives the project forward by iterating through open issue
 
 ## [web_researcher](./web_researcher/SKILL.md)
 A skill for performing deep web research and synthesizing information into structured reports.
+
+## [project-workflow](./project-workflow/SKILL.md)
+MASTER GUIDE: The complete end-to-end workflow for managing AI software projects.
 
