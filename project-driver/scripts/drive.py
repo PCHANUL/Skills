@@ -111,9 +111,16 @@ def drive_milestone(milestone_title=None, resume_issue=None):
         subprocess.run(["git", "checkout", integration_branch], check=True)
         subprocess.run(["git", "pull", "origin", integration_branch], check=False)
 
+        # Calculate relative paths
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        skills_root = os.path.dirname(os.path.dirname(current_dir)) # Up 2 levels
+        
+        start_script = os.path.join(skills_root, "project-task-start", "scripts", "start.py")
+        finish_script = os.path.join(skills_root, "project-task-finish", "scripts", "finish.py")
+
         # 1. Start Task
         print(f"[Driver] Starting task {issue_num}...")
-        subprocess.run(["python3", os.path.expanduser("~/Skills/project-task-start/scripts/start.py"), "--issue", str(issue_num)])
+        subprocess.run(["python3", start_script, "--issue", str(issue_num)])
         
         # 2. IMPLEMENTATION LOOP (Includes Review Feedback)
         while True:
@@ -131,17 +138,9 @@ def drive_milestone(milestone_title=None, resume_issue=None):
 
             # 3. Finish Task (Create/Update PR)
             print(f"[Driver] Finishing task {issue_num} (Committing & Pushing)...")
-            subprocess.run(["python3", os.path.expanduser("~/Skills/project-task-finish/scripts/finish.py"), "--issue", str(issue_num)])
+            subprocess.run(["python3", finish_script, "--issue", str(issue_num)])
             
-            # 3a. Update PR base to integration branch (if available)
-            if integration_branch != "main":
-                try:
-                    # Get current branch name
-                    current_branch = subprocess.check_output(["git", "branch", "--show-current"], text=True).strip()
-                    print(f"[Driver] Updating PR base to {integration_branch}...")
-                    subprocess.run(["gh", "pr", "edit", current_branch, "--base", integration_branch], check=False)
-                except Exception as e:
-                    print(f"Warning: Failed to update PR base: {e}")
+            # Note: PR base update is now handled inside finish.py automatically.
 
             # 4. REVIEW KICKOFF
             print(f"[Driver] Structuring `project-task-review`...")

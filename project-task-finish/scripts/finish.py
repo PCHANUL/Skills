@@ -34,11 +34,20 @@ def finish_task(issue_num, test_cmd=None):
     # 1. Run Tests (Optional but recommended)
     if test_cmd:
         print(f"Running tests with debugger: {test_cmd}")
-        # Call debugger script
-        debugger_script = os.path.expanduser("~/Skills/project-task-debugger/scripts/debug.py")
         
+        # Calculate relative path to debugger script
+        # Current: .../project-task-finish/scripts/finish.py
+        # Target:  .../project-task-debugger/scripts/debug.py
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        skills_root = os.path.dirname(os.path.dirname(current_dir)) # Up 2 levels
+        debugger_script = os.path.join(skills_root, "project-task-debugger", "scripts", "debug.py")
+        
+        if not os.path.exists(debugger_script):
+            print(f"⚠️ Debugger script not found at {debugger_script}. Falling back to direct execution.")
+            subprocess.run(test_cmd, shell=True, check=True)
+            return
+
         # We need to construct the command properly, passing the test command as an argument
-        # Use shlex to handle quoting if needed, but simpler: pass it as string
         import shlex
         
         result = subprocess.run(
