@@ -24,7 +24,7 @@ A skill for generating highly detailed, phase-based project task lists in Markdo
 A skill for automating GitHub Milestones and Issues creation based on a structured task list (from task-manager).
 
 ## [github-actions-template](./github-actions-template/SKILL.md)
-Turn your repository into a Self-Running Project with GitHub Actions.
+Turn your repository into a Self-Running Project with GitHub Actions. Automates the full project-workflow pipeline (Setup, Drive, Review) using Claude Code. Workflows: project-setup.yml (sync PROJECT_TODO.md to Milestones & Issues), project-drive.yml (drive milestone execution with Claude Code implementation), pr-review.yml (automated PR code review). Install with setup.py.
 
 ## [github](./github/SKILL.md)
 A skill for managing GitHub projects, issues, and pull requests using the gh CLI.

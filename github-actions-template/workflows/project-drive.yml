@@ -1,0 +1,200 @@
+name: "Project Drive"
+
+on:
+  workflow_dispatch:
+    inputs:
+      milestone:
+        description: "Milestone title (e.g., 'Phase 1: MVP')"
+        required: true
+        type: string
+      skills_repo:
+        description: "Skills repository (owner/repo)"
+        required: false
+        default: "PCHANUL/Skills"
+        type: string
+      test_command:
+        description: "Test command to run after implementation (e.g., 'npm test')"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  drive-milestone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Clone Skills repository
+        run: |
+          git clone https://github.com/${{ inputs.skills_repo }}.git /tmp/skills
+
+      - name: Determine integration branch
+        id: branch
+        run: |
+          PHASE_NUM=$(echo "${{ inputs.milestone }}" | grep -oP 'Phase\s+\K\d+' || echo "")
+          if [ -n "$PHASE_NUM" ]; then
+            BRANCH="milestone/phase-${PHASE_NUM}"
+          else
+            BRANCH="main"
+          fi
+          echo "integration_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Integration branch: $BRANCH"
+
+      - name: Checkout integration branch
+        run: |
+          BRANCH="${{ steps.branch.outputs.integration_branch }}"
+          git fetch origin
+          if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+          else
+            echo "Integration branch $BRANCH does not exist. Using current branch."
+          fi
+
+      - name: Fetch open issues for milestone
+        id: issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUES=$(gh issue list \
+            --milestone "${{ inputs.milestone }}" \
+            --state open \
+            --json number,title \
+            --limit 100 \
+            --jq 'sort_by(.number) | .[].number')
+
+          if [ -z "$ISSUES" ]; then
+            echo "No open issues found for milestone '${{ inputs.milestone }}'."
+            echo "issue_count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ISSUE_COUNT=$(echo "$ISSUES" | wc -l)
+          echo "issue_list<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$ISSUES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "issue_count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Found $ISSUE_COUNT open issues."
+
+      - name: Drive issues sequentially
+        if: steps.issues.outputs.issue_count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INTEGRATION_BRANCH: ${{ steps.branch.outputs.integration_branch }}
+          TEST_COMMAND: ${{ inputs.test_command }}
+        run: |
+          ISSUES="${{ steps.issues.outputs.issue_list }}"
+
+          for ISSUE_NUM in $ISSUES; do
+            echo ""
+            echo "============================================"
+            echo "Processing Issue #${ISSUE_NUM}"
+            echo "============================================"
+
+            # Fetch issue details
+            ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title')
+            ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --json body --jq '.body')
+            echo "Title: $ISSUE_TITLE"
+
+            # Sanitize branch name
+            SAFE_TITLE=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 -]//g' | sed 's/ /-/g' | cut -c1-50)
+            FEATURE_BRANCH="feat/issue-${ISSUE_NUM}-${SAFE_TITLE}"
+
+            # Create feature branch from integration branch
+            git checkout "$INTEGRATION_BRANCH"
+            git pull origin "$INTEGRATION_BRANCH" || true
+
+            if git rev-parse --verify "$FEATURE_BRANCH" >/dev/null 2>&1; then
+              echo "Branch $FEATURE_BRANCH already exists. Checking out..."
+              git checkout "$FEATURE_BRANCH"
+            else
+              echo "Creating branch $FEATURE_BRANCH..."
+              git checkout -b "$FEATURE_BRANCH"
+            fi
+
+            # Assign issue
+            gh issue edit "$ISSUE_NUM" --add-assignee "@me" --add-label "in-progress" || true
+
+            # Invoke Claude Code for implementation
+            echo "Invoking Claude Code for implementation..."
+            npx claude-code --print \
+              --model claude-sonnet-4-20250514 \
+              --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
+              "You are implementing Issue #${ISSUE_NUM}: ${ISSUE_TITLE}
+
+            Issue Description:
+            ${ISSUE_BODY}
+
+            Instructions:
+            1. Read the issue requirements carefully.
+            2. Analyze the existing codebase to understand the context.
+            3. Implement the required changes.
+            4. If a test command is provided, run it: ${TEST_COMMAND}
+            5. Make sure all changes are correct and complete.
+            6. Do NOT commit or push — that will be handled separately." || true
+
+            # Commit and push
+            git add -A
+            if git diff --cached --quiet; then
+              echo "No changes to commit for Issue #${ISSUE_NUM}. Skipping."
+              git checkout "$INTEGRATION_BRANCH"
+              continue
+            fi
+
+            git commit -m "feat: Implement Issue #${ISSUE_NUM} — ${ISSUE_TITLE}"
+            git push -u origin "$FEATURE_BRANCH"
+
+            # Create PR
+            EXISTING_PR=$(gh pr list --head "$FEATURE_BRANCH" --json number --jq '.[0].number' || echo "")
+            if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+              echo "PR #${EXISTING_PR} already exists for $FEATURE_BRANCH."
+            else
+              PR_BODY="Closes #${ISSUE_NUM}
+
+            ## Implementation Details
+            Automated implementation via Project Drive workflow.
+
+            **Milestone**: ${{ inputs.milestone }}
+            **Integration Branch**: ${INTEGRATION_BRANCH}"
+
+              PR_URL=$(gh pr create \
+                --title "$ISSUE_TITLE" \
+                --body "$PR_BODY" \
+                --base "$INTEGRATION_BRANCH" \
+                --head "$FEATURE_BRANCH" \
+                --label "automated" || echo "")
+
+              if [ -n "$PR_URL" ]; then
+                echo "PR created: $PR_URL"
+              else
+                echo "Failed to create PR for Issue #${ISSUE_NUM}."
+              fi
+            fi
+
+            # Return to integration branch for next issue
+            git checkout "$INTEGRATION_BRANCH"
+
+            # Rate limit pause
+            sleep 5
+          done
+
+          echo ""
+          echo "============================================"
+          echo "Milestone '${{ inputs.milestone }}' drive complete!"
+          echo "============================================"

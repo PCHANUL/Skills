@@ -1,0 +1,71 @@
+name: "Project Setup"
+
+on:
+  workflow_dispatch:
+    inputs:
+      todo_file:
+        description: "Path to the PROJECT_TODO.md file"
+        required: true
+        default: "PROJECT_TODO.md"
+        type: string
+      skills_repo:
+        description: "Skills repository (owner/repo)"
+        required: false
+        default: "PCHANUL/Skills"
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  setup-project:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Clone Skills repository
+        run: |
+          git clone https://github.com/${{ inputs.skills_repo }}.git /tmp/skills
+
+      - name: Validate TODO file exists
+        run: |
+          if [ ! -f "${{ inputs.todo_file }}" ]; then
+            echo "Error: ${{ inputs.todo_file }} not found."
+            echo "Make sure the file exists in the repository root."
+            exit 1
+          fi
+          echo "Found ${{ inputs.todo_file }}"
+          echo "--- Preview ---"
+          head -30 "${{ inputs.todo_file }}"
+
+      - name: Sync to GitHub (Milestones & Issues)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          echo "Syncing to repository: $REPO"
+
+          python3 /tmp/skills/project-setup/scripts/sync_to_github.py \
+            --file "${{ inputs.todo_file }}" \
+            --repo "$REPO"
+
+      - name: Summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## Project Setup Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Milestones" >> "$GITHUB_STEP_SUMMARY"
+          gh api repos/${{ github.repository }}/milestones --jq '.[] | "- **\(.title)** (Open issues: \(.open_issues))"' >> "$GITHUB_STEP_SUMMARY" || true
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Open Issues" >> "$GITHUB_STEP_SUMMARY"
+          ISSUE_COUNT=$(gh issue list --state open --json number --jq 'length')
+          echo "Total open issues: **${ISSUE_COUNT}**" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,174 @@
+name: "PR Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude'))
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          else
+            PR_NUMBER="${{ github.event.issue.number }}"
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # Fetch changed files
+          FILES=$(gh pr view "$PR_NUMBER" --json files --jq '.files[].path')
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          FILE_COUNT=$(echo "$FILES" | wc -l)
+          echo "file_count=$FILE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR_NUMBER has $FILE_COUNT changed files."
+
+      - name: Fetch PR diff
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          DIFF=$(gh pr diff "$PR_NUMBER" --patch)
+
+          # Save diff to file for Claude Code to read
+          echo "$DIFF" > /tmp/pr_diff.patch
+          echo "Diff saved to /tmp/pr_diff.patch ($(wc -l < /tmp/pr_diff.patch) lines)"
+
+      - name: Run linters
+        id: lint
+        continue-on-error: true
+        run: |
+          LINT_OUTPUT=""
+
+          # Detect and run appropriate linters
+          if [ -f "pubspec.yaml" ]; then
+            echo "Detected Flutter/Dart project."
+            LINT_OUTPUT+="$(flutter analyze 2>&1 || true)"
+          fi
+
+          if [ -f "package.json" ]; then
+            echo "Detected Node.js project."
+            if npm run lint --if-present 2>/dev/null; then
+              LINT_OUTPUT+="$(npm run lint 2>&1 || true)"
+            fi
+          fi
+
+          if [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
+            echo "Detected Python project."
+            pip install ruff 2>/dev/null || true
+            LINT_OUTPUT+="$(ruff check . 2>&1 || true)"
+          fi
+
+          echo "$LINT_OUTPUT" > /tmp/lint_output.txt
+          echo "Lint output saved."
+
+      - name: Load project conventions
+        id: conventions
+        run: |
+          if [ -f "docs/CONVENTIONS.md" ]; then
+            cp docs/CONVENTIONS.md /tmp/conventions.md
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif [ -f "CONVENTIONS.md" ]; then
+            cp CONVENTIONS.md /tmp/conventions.md
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Standard Clean Code principles (DRY, SOLID, Clear Naming)." > /tmp/conventions.md
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Claude Code Review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+
+          REVIEW=$(npx claude-code --print \
+            --model claude-sonnet-4-20250514 \
+            --allowedTools "Bash,Read,Glob,Grep" \
+            "You are a senior code reviewer. Review PR #${PR_NUMBER}.
+
+          Changed files:
+          ${{ steps.pr.outputs.files }}
+
+          Instructions:
+          1. Read /tmp/pr_diff.patch for the full diff.
+          2. Read /tmp/lint_output.txt for linter results.
+          3. Read /tmp/conventions.md for project conventions.
+          4. For each changed file, read the full file content to understand context.
+          5. Analyze the changes for:
+             - Correctness and logic errors
+             - Security vulnerabilities (OWASP Top 10)
+             - Performance issues
+             - Code style and conventions compliance
+             - Missing error handling
+             - Test coverage gaps
+          6. Output your review in this format:
+
+          ## Code Review Summary
+          **Verdict**: APPROVE or REQUEST_CHANGES
+
+          ### Findings
+          - List each finding with severity (Critical/Warning/Info)
+
+          ### Suggestions
+          - Actionable improvement suggestions
+
+          Be concise but thorough. Only flag real issues, not style nitpicks.")
+
+          echo "$REVIEW" > /tmp/review_result.txt
+
+          # Determine verdict
+          if echo "$REVIEW" | grep -qi "REQUEST_CHANGES"; then
+            echo "verdict=REQUEST_CHANGES" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=APPROVE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          REVIEW=$(cat /tmp/review_result.txt)
+
+          # Post as PR comment
+          gh pr comment "$PR_NUMBER" --body "$REVIEW"
+
+      - name: Submit PR review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          VERDICT="${{ steps.review.outputs.verdict }}"
+
+          if [ "$VERDICT" = "APPROVE" ]; then
+            gh pr review "$PR_NUMBER" --approve --body "Automated review: All checks passed."
+          else
+            gh pr review "$PR_NUMBER" --request-changes --body "Automated review: Changes requested. See review comment for details."
+          fi
