@@ -27,7 +27,12 @@ def get_open_issues(milestone_title):
     output = run_command(cmd)
     if not output:
         return []
-    return json.loads(output)
+    
+    issues = json.loads(output)
+    # Sort by issue number ascending (assuming creation order)
+    issues.sort(key=lambda x: x['number'])
+    
+    return issues
 
 STATE_FILE = "DRIVER_STATE.json"
 
