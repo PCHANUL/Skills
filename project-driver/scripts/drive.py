@@ -162,6 +162,10 @@ def drive_milestone(milestone_title=None, resume_issue=None):
                 merge_cmd = ["gh", "pr", "merge", "--merge", "--delete-branch"]
                 subprocess.run(merge_cmd, check=False)
                 
+                # Explicitly close the issue (since merge to integration branch doesn't auto-close)
+                print(f"[Driver] Explicitly closing Issue #{issue_num}...")
+                subprocess.run(["gh", "issue", "close", str(issue_num)], check=False)
+                
                 # Update local integration branch
                 subprocess.run(["git", "checkout", integration_branch], check=False)
                 subprocess.run(["git", "pull", "origin", integration_branch], check=False)

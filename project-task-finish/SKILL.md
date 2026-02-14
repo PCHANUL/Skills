@@ -12,18 +12,22 @@ This skill finalizes a task and prepares it for review. Once the coding (by `cod
 1.  **Create PR (`create_pr`)**:
     -   Automatically commits unstaged changes.
     -   Pushes the current branch to origin.
-    -   Creates a Pull Request with a proper title and description (`Closes #123`).
+    -   **Smart PR Body**: Generates a detailed description from git commit logs.
+    -   **Explicit Linking**: Adds a comment to the associated Issue linking it to the PR.
     -   (Optional) Adds "Draft" flag if more work is needed.
 
-2.  **Link & Cleanup (`link_cleanup`)**:
-    -   Links the generated PR to the Issue as a comment.
+2.  **Test & Debug (`test_debug`)**:
+    -   **(New)** Supports `--test-cmd` to run tests before finishing.
+    -   **(New)** Integrates with `project-task-debugger` to autonomoulsy fix test failures.
+
+3.  **Cleanup (`cleanup`)**:
     -   Updates the Issue status label (removes `in-progress`).
-    -   (Optional) Moves project cards or adds reviewers.
+    -   Ensures correct base branch (e.g., `milestone/phase-1`).
 
 ## Usage
 
 When implementation is complete and verified:
 
 ```bash
-python3 ~/Skills/project-task-finish/scripts/finish.py --issue <issue_number>
+python3 .../finish.py --issue <issue_number> [--test-cmd "npm test"]
 ```

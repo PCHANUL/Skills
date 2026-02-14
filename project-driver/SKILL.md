@@ -20,6 +20,11 @@ This skill is the **Project Manager Agent**. It doesn't write code itself, but i
     -   Calls `project-task-finish` to create the PR.
     -   Calls `project-task-review` to check the PR.
 
+3.  **Release Milestone (`create_release`)**:
+    -   Automatically triggered when all open issues are closed.
+    -   Generates a "Release PR" merging the implementation branch (`milestone/phase-1`) into `main`.
+    -   Auto-populates release notes with a checklist of closed issues.
+
 ## Instructions
 
 ### Usage
