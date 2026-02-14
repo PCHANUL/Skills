@@ -75,7 +75,7 @@ def finish_task(issue_num, test_cmd=None):
     # 3. Push
     current_branch = run_command(["git", "branch", "--show-current"])
     print(f"Pushing {current_branch}...")
-    run_command(["git", "push", "-u", "origin", current_branch], check=False)
+    run_command(["git", "push", "-u", "origin", current_branch]) # check=True by default
 
     # 4. Create PR (Idempotent)
     existing_pr = check_existing_pr()
@@ -126,13 +126,10 @@ def finish_task(issue_num, test_cmd=None):
             "--base", base_branch
         ]
         
-        # Add labels if possible
-        # pr_cmd.extend(["--label", "needs-review"])
-        
         pr_url = run_command(pr_cmd)
         print(f"✅ PR Created: {pr_url}")
         
-        # Explicitly link by commenting on the issue (redundant but safe)
+        # Explicitly link by commenting on the issue
         print(f"Linking Issue #{issue_num} to PR...")
         run_command(["gh", "issue", "comment", str(issue_num), "--body", f"Linked to PR: {pr_url}"])
 

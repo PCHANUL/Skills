@@ -35,6 +35,10 @@ def start_task(issue_num):
     safe_title = sanitize_branch_name(title)
     branch_name = f"feat/issue-{issue_num}-{safe_title}"
     
+    # Ensure latest remote state
+    print("Fetching latest from origin...")
+    run_command(["git", "fetch", "origin"])
+
     # Check if branch exists
     print(f"Checking for branch '{branch_name}'...")
     exists = run_command(["git", "rev-parse", "--verify", branch_name], check=False)
@@ -48,7 +52,7 @@ def start_task(issue_num):
         
         # Assign self to issue and set label to in-progress
         print("Updating issue status...")
-        run_command(["gh", "issue", "edit", str(issue_num), "--add-assignee", "@me", "--add-label", "in-progress"], check=False)
+        run_command(["gh", "issue", "edit", str(issue_num), "--add-assignee", "@me", "--add-label", "in-progress"])
 
     print(f"\n✅ Task #{issue_num} Started!")
     print(f"   Branch: {branch_name}")

@@ -4,12 +4,23 @@ import sys
 import json
 import os
 
-def run_command(cmd_list):
+def run_command(cmd_list, fatal=True):
     try:
+        # result = subprocess.run(cmd_list, capture_output=True, text=True, check=True)
+        # Using check=True to raise CalledProcessError which we catch
         result = subprocess.run(cmd_list, capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e.stderr}")
+        print(f"\n[ERROR] Command failed: {' '.join(cmd_list)}")
+        print(f"[ERROR] Stderr: {e.stderr.strip()}")
+        if fatal:
+            print("[CRITICAL] Aborting project driver due to failed mandatory command.")
+            sys.exit(1)
+        return None
+    except Exception as e:
+        print(f"\n[ERROR] Unexpected error running {' '.join(cmd_list)}: {e}")
+        if fatal:
+            sys.exit(1)
         return None
 
 def get_open_issues(milestone_title):
@@ -24,7 +35,8 @@ def get_open_issues(milestone_title):
         "--json", "number,title,state,milestone",
         "--limit", "100"
     ]
-    output = run_command(cmd)
+    # Fatal=False here because if no issues are found, we might want to handle it gracefully
+    output = run_command(cmd, fatal=False)
     if not output:
         return []
     
@@ -93,9 +105,10 @@ def drive_milestone(milestone_title=None, resume_issue=None):
         
         # Switch to Integration Branch
         print(f"[Driver] Switching to {integration_branch}...")
-        subprocess.run(["git", "fetch", "origin"], check=False)
-        subprocess.run(["git", "checkout", integration_branch], check=False)
-        subprocess.run(["git", "pull", "origin", integration_branch], check=False)
+        run_command(["git", "fetch", "origin"])
+        run_command(["git", "checkout", integration_branch])
+        run_command(["git", "pull", "origin", integration_branch], fatal=False) # Pull might fail if local is ahead or no remote yet, handle gracefully if needed or make fatal. Actually if pull fails due to conflict, we must stop.
+
     
     # Process issues sequentially
     for issue in issues:
@@ -113,8 +126,8 @@ def drive_milestone(milestone_title=None, resume_issue=None):
         print(f"\n--- Processing Issue #{issue_num}: {issue_title} ---")
         
         # 0. Ensure we are on the latest integration branch
-        subprocess.run(["git", "checkout", integration_branch], check=True)
-        subprocess.run(["git", "pull", "origin", integration_branch], check=False)
+        run_command(["git", "checkout", integration_branch])
+        run_command(["git", "pull", "origin", integration_branch], fatal=False)
 
         # Calculate relative paths
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -125,7 +138,7 @@ def drive_milestone(milestone_title=None, resume_issue=None):
 
         # 1. Start Task
         print(f"[Driver] Starting task {issue_num}...")
-        subprocess.run(["python3", start_script, "--issue", str(issue_num)])
+        run_command(["python3", start_script, "--issue", str(issue_num)])
         
         # 2. IMPLEMENTATION LOOP (Includes Review Feedback)
         while True:
@@ -143,7 +156,7 @@ def drive_milestone(milestone_title=None, resume_issue=None):
 
             # 3. Finish Task (Create/Update PR)
             print(f"[Driver] Finishing task {issue_num} (Committing & Pushing)...")
-            subprocess.run(["python3", finish_script, "--issue", str(issue_num)])
+            run_command(["python3", finish_script, "--issue", str(issue_num)])
             
             # Note: PR base update is now handled inside finish.py automatically.
 
@@ -160,15 +173,15 @@ def drive_milestone(milestone_title=None, resume_issue=None):
                 # Merge PR
                 # --delete-branch cleans up the feature branch
                 merge_cmd = ["gh", "pr", "merge", "--merge", "--delete-branch"]
-                subprocess.run(merge_cmd, check=False)
+                run_command(merge_cmd)
                 
                 # Explicitly close the issue (since merge to integration branch doesn't auto-close)
                 print(f"[Driver] Explicitly closing Issue #{issue_num}...")
-                subprocess.run(["gh", "issue", "close", str(issue_num)], check=False)
+                run_command(["gh", "issue", "close", str(issue_num)])
                 
                 # Update local integration branch
-                subprocess.run(["git", "checkout", integration_branch], check=False)
-                subprocess.run(["git", "pull", "origin", integration_branch], check=False)
+                run_command(["git", "checkout", integration_branch])
+                run_command(["git", "pull", "origin", integration_branch], fatal=False)
                 
                 break  # Exit loop to next issue
             else:
