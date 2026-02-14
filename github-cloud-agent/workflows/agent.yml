@@ -1,0 +1,46 @@
+name: Cloud Agent
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  run-agent:
+    if: startsWith(github.event.comment.body, '/agent ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install google-generativeai anthropic
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "AI Agent"
+          git config --global user.email "agent@bot.com"
+
+      - name: Execute Cloud Agent Driver
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_COMMENT: ${{ github.event.comment.body }}
+        run: |
+          # Use relative path if using submodule, or adjust path accordingly
+          python3 .skills/github-cloud-agent/scripts/headless_driver.py \
+            --issue "${{ github.event.issue.number }}" \
+            --comment "${{ github.event.comment.body }}"

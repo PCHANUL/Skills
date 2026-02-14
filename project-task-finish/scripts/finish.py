@@ -87,8 +87,6 @@ def finish_task(issue_num, test_cmd=None):
         print("Creating new PR...")
         # Get Issue Title to use as PR title
         title = run_command(["gh", "issue", "view", str(issue_num), "--json", "title", "--jq", ".title"])
-        body = f"Closes #{issue_num}\n\n## Implementation Details\n- Implemented feature as per requirements."
-        
         # Determine Base Branch from Milestone
         milestone = run_command(["gh", "issue", "view", str(issue_num), "--json", "milestone", "--jq", ".milestone.title"])
         base_branch = "main"
@@ -101,6 +99,24 @@ def finish_task(issue_num, test_cmd=None):
                 print(f"Detected Integation Branch from Milestone '{milestone}': {base_branch}")
             else:
                 print(f"Warning: Could not parse phase from milestone '{milestone}'. Defaulting to main.")
+        
+        # Get Commit Summary for PR Body
+        print(f"Generating PR body from commits against {base_branch}...")
+        target_ref = f"origin/{base_branch}"
+        
+        # Check if remote branch exists to avoid error
+        remote_check = run_command(["git", "ls-remote", "--heads", "origin", base_branch], check=False)
+        if not remote_check:
+             # Fallback to main if specific milestone branch is missing on remote
+             print(f"Warning: Remote branch {base_branch} not found. Diffing against origin/main.")
+             target_ref = "origin/main"
+
+        commits = run_command(["git", "log", "--no-merges", "--pretty=format:- %s", f"{target_ref}..HEAD"], check=False)
+        
+        if not commits:
+            commits = "- Implemented feature (No specific commits found relative to base)."
+
+        body = f"Closes #{issue_num}\n\n## Implementation Details\n{commits}"
         
         # Create PR
         pr_cmd = [
