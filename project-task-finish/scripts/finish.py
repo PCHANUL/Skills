@@ -131,6 +131,10 @@ def finish_task(issue_num, test_cmd=None):
         
         pr_url = run_command(pr_cmd)
         print(f"✅ PR Created: {pr_url}")
+        
+        # Explicitly link by commenting on the issue (redundant but safe)
+        print(f"Linking Issue #{issue_num} to PR...")
+        run_command(["gh", "issue", "comment", str(issue_num), "--body", f"Linked to PR: {pr_url}"])
 
 def main():
     parser = argparse.ArgumentParser(description='Finish a task by committing and creating a PR.')
