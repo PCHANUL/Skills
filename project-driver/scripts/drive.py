@@ -176,6 +176,60 @@ def drive_milestone(milestone_title=None, resume_issue=None):
     # Cleanup state after milestone completion
     clear_state()
     print(f"=== Project Driver: Milestone '{milestone_title}' Complete! ===")
+    
+    # Create Release PR if we are on an integration branch
+    if integration_branch != "main":
+        print(f"\n[Driver] Creating Release PR for {milestone_title}...")
+        
+        # 1. Fetch all closed issues for this milestone
+        print(f"[Driver] Fetching closed issues for release notes...")
+        try:
+            cmd = [
+                "gh", "issue", "list",
+                "--milestone", milestone_title,
+                "--state", "closed",
+                "--json", "number,title"
+            ]
+            closed_issues_json = run_command(cmd)
+            closed_issues = json.loads(closed_issues_json) if closed_issues_json else []
+            
+            # 2. Construct PR Body
+            body_lines = [
+                f"# Release: {milestone_title}",
+                "",
+                "## 🚀 Released Features",
+                ""
+            ]
+            
+            if closed_issues:
+                for issue in closed_issues:
+                    body_lines.append(f"- Closes #{issue['number']}: {issue['title']}")
+            else:
+                body_lines.append("- No issues linked to this milestone were closed.")
+            
+            body_lines.append("")
+            body_lines.append("## 📦 Integration Details")
+            body_lines.append(f"Merges `{integration_branch}` into `main`.")
+            
+            body = "\n".join(body_lines)
+            
+            # 3. Create PR
+            pr_title = f"Release: {milestone_title}"
+            pr_cmd = [
+                "gh", "pr", "create",
+                "--title", pr_title,
+                "--body", body,
+                "--base", "main",
+                "--head", integration_branch
+            ]
+            
+            pr_url = run_command(pr_cmd)
+            print(f"✅ Release PR Created: {pr_url}")
+            print(f"   Review and merge this PR to ship {milestone_title}!")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to create Release PR: {e}")
+            print("   You may need to create it manually.")
 
 def main():
     parser = argparse.ArgumentParser(description='Project Driver: Automate Task Execution Cycle')
