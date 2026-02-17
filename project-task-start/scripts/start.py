@@ -1,5 +1,4 @@
 import argparse
-import re
 import subprocess
 import sys
 
@@ -19,21 +18,13 @@ def get_issue_title(issue_num):
     title = run_command(["gh", "issue", "view", str(issue_num), "--json", "title", "--jq", ".title"])
     return title
 
-def sanitize_branch_name(title):
-    """Converts title to a valid branch name suffix."""
-    # "Implement Login Feature" -> "implement-login-feature"
-    name = re.sub(r'[^\w\s-]', '', title).strip().lower()
-    name = re.sub(r'[\s]+', '-', name)
-    return name
-
 def start_task(issue_num):
     title = get_issue_title(issue_num)
     if not title:
         print(f"Could not find issue #{issue_num}")
         sys.exit(1)
-        
-    safe_title = sanitize_branch_name(title)
-    branch_name = f"feat/issue-{issue_num}-{safe_title}"
+
+    branch_name = f"feat/issue-{issue_num}"
     
     # Ensure latest remote state
     print("Fetching latest from origin...")

@@ -58,7 +58,7 @@ graph TD
 
 #### 3.1. Task Start (`project-task-start`)
 - **Action**: Creates feature branch from Integration Branch.
-- **Idempotency**: If branch `feat/issue-N` already exists, it simply checks it out (Resume Mode).
+- **Idempotency**: If branch `feat/issue-{N}` already exists, it simply checks it out (Resume Mode).
 
 #### 3.2. Implementation (`project-task-implementer`)
 - **Goal**: Write code iteratively.
