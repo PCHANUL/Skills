@@ -13,7 +13,7 @@ This skill handles the initialization phase of a development task. It ensures th
     -   Fetches issue details.
     -   Assigns the issue to the current user.
     -   Updates issue labels (adds `in-progress`).
-    -   Creates and checks out a feature branch (`feat/issue-number-title`).
+    -   Creates and checks out a feature branch (`feat/issue-{N}`).
 
 2.  **Scaffold Task (`scaffold_task`)**:
     -   Analyzes the issue description for required files.
