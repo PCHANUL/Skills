@@ -112,6 +112,28 @@ update_claude_md() {
   fi
 }
 
+# ---- Config Antigravity ----
+
+link_antigravity_skills() {
+  local skills_dir="$1"
+  local target_dir="$PWD/.agents/skills"
+  
+  # Only link if not in the skills repo itself or HOME
+  if [[ "$PWD" != "$skills_dir" && "$PWD" != "$HOME" ]]; then
+    info "Setting up Antigravity skills at $target_dir..."
+    mkdir -p "$target_dir"
+    
+    for skill_md in "$skills_dir"/*/SKILL.md; do
+      [ -f "$skill_md" ] || continue
+      local s_dir=$(dirname "$skill_md")
+      local s_name=$(basename "$s_dir")
+      
+      # Create symlink for each skill
+      ln -snf "$s_dir" "$target_dir/$s_name"
+    done
+  fi
+}
+
 # ---- Commands ----
 
 cmd_install() {
@@ -138,6 +160,8 @@ cmd_install() {
   info "Scanning skills and updating Claude Code config..."
   update_claude_md "$SKILLS_DIR"
 
+  link_antigravity_skills "$SKILLS_DIR"
+
   print_result "installed"
 }
 
@@ -157,6 +181,8 @@ cmd_update() {
 
   info "Re-scanning skills and updating Claude Code config..."
   update_claude_md "$SKILLS_DIR"
+
+  link_antigravity_skills "$SKILLS_DIR"
 
   print_result "updated"
 }
@@ -178,6 +204,9 @@ print_result() {
   echo "  Skills directory : $SKILLS_DIR"
   echo "  Skills found     : $count"
   echo "  Claude config    : $CLAUDE_MD"
+  if [[ -d "$PWD/.agents/skills" && "$PWD" != "$SKILLS_DIR" ]]; then
+    echo "  Antigravity      : $PWD/.agents/skills (Symlinked)"
+  fi
   echo ""
   echo "  Commands:"
   echo "    bash ~/Skills/install.sh            # reinstall"
