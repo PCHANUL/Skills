@@ -127,14 +127,52 @@ def sync_to_github(phases, repo):
         main_sha = run_gh_command(sha_cmd)
         
         if main_sha:
-            # Create ref
-            create_ref_cmd = [
-                "gh", "api", f"repos/{repo}/git/refs",
-                "-f", f"ref=refs/heads/{branch_name}",
-                "-f", f"sha={main_sha}"
-            ]
-            run_gh_command(create_ref_cmd)
-            print(f"  > Created Remote Branch: {branch_name}")
+            # 1. Get main tree SHA
+            commit_cmd = ["gh", "api", f"repos/{repo}/git/commits/{main_sha}", "--jq", ".tree.sha"]
+            tree_sha = run_gh_command(commit_cmd)
+
+            if tree_sha:
+                # 2. Create an empty commit
+                empty_commit_msg = f"chore: start milestone phase-{phase['number']}"
+                create_commit_cmd = [
+                    "gh", "api", f"repos/{repo}/git/commits",
+                    "-f", f"message={empty_commit_msg}",
+                    "-f", f"tree={tree_sha}",
+                    "-f", f"parents[]={main_sha}",
+                    "--jq", ".sha"
+                ]
+                new_commit_sha = run_gh_command(create_commit_cmd)
+
+                if new_commit_sha:
+                    # 3. Create ref pointing to new empty commit
+                    create_ref_cmd = [
+                        "gh", "api", f"repos/{repo}/git/refs",
+                        "-f", f"ref=refs/heads/{branch_name}",
+                        "-f", f"sha={new_commit_sha}"
+                    ]
+                    run_gh_command(create_ref_cmd)
+                    print(f"  > Created Remote Branch: {branch_name} (with empty commit)")
+                    
+                    # 4. Create Milestone PR
+                    print(f"  Creating Pull Request for {branch_name}...")
+                    pr_title = f"[{phase['title']}] Integration PR"
+                    pr_body = f"Integration PR for **{phase['title']}**.\\nAll related feature branches for this milestone will be merged into this phase branch before a final release to `main`."
+                    create_pr_cmd = [
+                        "gh", "pr", "create",
+                        "--repo", repo,
+                        "--base", "main",
+                        "--head", branch_name,
+                        "--title", pr_title,
+                        "--body", pr_body,
+                        "--milestone", phase['title']
+                    ]
+                    pr_url = run_gh_command(create_pr_cmd)
+                    if pr_url:
+                        print(f"    > Created PR: {pr_url}")
+                else:
+                    print("  > Failed to create empty commit. Skipping branch creation.")
+            else:
+                 print("  > Failed to get tree SHA. Skipping branch creation.")
         else:
             print("  > Failed to get main SHA. Skipping branch creation.")
 

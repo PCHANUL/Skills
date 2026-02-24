@@ -14,15 +14,33 @@ This skill is designed to break down complex projects into actionable, granular 
 
 ## Instructions
 
-### Usage
-To generate a new detailed task list, use the provided Python script. You can customize the number of phases and weeks.
+### Intelligent Planning Automation (Recommended)
+You can now use AI to generate project plan options based on your idea, and automatically create a detailed task list based on your choice.
+
+**Prerequisite:** Ensure `LLM_API_KEY` is exported in your environment.
+
+```bash
+python3 ~/Skills/project-planner/scripts/plan_generator.py
+```
+Or provide an idea directly:
+```bash
+python3 ~/Skills/project-planner/scripts/plan_generator.py --idea "Build a habit tracking iOS app"
+```
+
+The script will:
+1. Propose 3 distinct structural approaches based on your idea.
+2. Ask you to choose the preferred approach.
+3. Generate a highly detailed `PROJECT_TODO.md` file automatically.
+
+### Manual Template Generation
+If you prefer to manually fill in the task list, you can generate a blank template. You can customize the number of phases and weeks.
 
 ```bash
 python3 ~/Skills/project-planner/scripts/generate_task_list.py --output "PROJECT_TODO.md" --title "My Project" --phases 3 --weeks 4
 ```
 
 ### Template Structure
-The generated file will follow this structure:
+The generated file (whether AI or manual) will follow this structure:
 
 ```markdown
 # [Project Name] Detailed Todo List

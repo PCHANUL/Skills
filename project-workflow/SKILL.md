@@ -47,7 +47,7 @@ graph TD
 - **Outcome**: 
     - GitHub Milestones created.
     - GitHub Issues created.
-    - **Integration Branch** (`milestone/phase-1`) automatically created.
+    - **Integration Branch** (`milestone/phase-1`) & **Integration PR** automatically created.
 
 ### 3. Execution Phase (`project-driver`)
 - **Goal**: Execute the plan autonomously.
@@ -79,7 +79,7 @@ graph TD
 - **Action**: Analyze code against conventions.
 - **Loop**: 
     - If **Fail**: Go back to Implementation.
-    - If **Pass**: Merge to Integration Branch & Delete feature branch.
+    - If **Pass**: Merge to Integration Branch, **update Integration PR with completed issue**, & Delete feature branch.
 
 ### 4. Safety & Edge Cases
 

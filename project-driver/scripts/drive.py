@@ -183,6 +183,35 @@ def drive_milestone(milestone_title=None, resume_issue=None):
                 run_command(["git", "checkout", integration_branch])
                 run_command(["git", "pull", "origin", integration_branch], fatal=False)
                 
+                # Append completed issue to the Integration PR body
+                print(f"[Driver] Updating Integration PR for {integration_branch}...")
+                # Find the PR number for the integration branch
+                pr_list_cmd = [
+                    "gh", "pr", "list",
+                    "--head", integration_branch,
+                    "--state", "open",
+                    "--json", "number,body",
+                    "--limit", "1"
+                ]
+                pr_output = run_command(pr_list_cmd, fatal=False)
+                if pr_output:
+                    prs = json.loads(pr_output)
+                    if prs:
+                        integration_pr_number = prs[0]['number']
+                        current_body = prs[0]['body']
+                        
+                        # Append the completed issue info
+                        new_body = current_body + f"\n- [x] Completed Issue #{issue_num}: {issue_title}"
+                        
+                        update_pr_cmd = [
+                            "gh", "pr", "edit", str(integration_pr_number),
+                            "--body", new_body
+                        ]
+                        run_command(update_pr_cmd, fatal=False)
+                        print(f"  > Updated Integration PR #{integration_pr_number} with Issue #{issue_num}.")
+                    else:
+                        print(f"  > No open Integration PR found for {integration_branch}.")
+                
                 break  # Exit loop to next issue
             else:
                 print("Review Failed. Looping back to implementation...")
