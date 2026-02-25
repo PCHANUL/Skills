@@ -116,10 +116,34 @@ update_claude_md() {
 
 link_antigravity_skills() {
   local skills_dir="$1"
-  local target_dir="$PWD/.agents/skills"
   
   # Only link if not in the skills repo itself or HOME
   if [[ "$PWD" != "$skills_dir" && "$PWD" != "$HOME" ]]; then
+    local agent_dir_name=".agents"
+    local opt="1"
+    
+    if [ -c /dev/tty ]; then
+      echo ""
+      info "Which directory does your agent use for skills?"
+      echo "  1) .agents  (default, Universal)"
+      echo "  2) .agent   (e.g., Antigravity)"
+      echo "  3) _agents"
+      echo "  4) _agent"
+      echo "  5) Do not create symlinks for this project"
+      
+      # Read from /dev/tty to support 'curl | bash' installs
+      read -p "Select option [1-5, default 1]: " opt < /dev/tty || opt=1
+    fi
+    
+    case "$opt" in
+      2) agent_dir_name=".agent"   ;;
+      3) agent_dir_name="_agents"  ;;
+      4) agent_dir_name="_agent"   ;;
+      5) info "Skipping project symlinks."; return 0 ;;
+      *) agent_dir_name=".agents"  ;;
+    esac
+
+    local target_dir="$PWD/$agent_dir_name/skills"
     info "Setting up Antigravity skills at $target_dir..."
     mkdir -p "$target_dir"
     
@@ -131,6 +155,9 @@ link_antigravity_skills() {
       # Create symlink for each skill
       ln -snf "$s_dir" "$target_dir/$s_name"
     done
+    
+    # Export for print_result to know what we used
+    export AGENT_DIR_NAME="$agent_dir_name"
   fi
 }
 
@@ -204,8 +231,9 @@ print_result() {
   echo "  Skills directory : $SKILLS_DIR"
   echo "  Skills found     : $count"
   echo "  Claude config    : $CLAUDE_MD"
-  if [[ -d "$PWD/.agents/skills" && "$PWD" != "$SKILLS_DIR" ]]; then
-    echo "  Antigravity      : $PWD/.agents/skills (Symlinked)"
+  local agent_dir="${AGENT_DIR_NAME:-.agents}"
+  if [[ -d "$PWD/$agent_dir/skills" && "$PWD" != "$SKILLS_DIR" ]]; then
+    echo "  Project Link     : $PWD/$agent_dir/skills (Symlinked)"
   fi
   echo ""
   echo "  Commands:"
