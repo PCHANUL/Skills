@@ -30,8 +30,12 @@ This skill is the **"Emergency Response Unit"**. When tests fail or lint errors 
 python3 ~/Skills/project-task-debugger/scripts/debug.py --command "npm test"
 ```
 
-### Integrated Workflow
-`project-task-finish` calls this automatically if tests fail.
+### Integrated Workflow (Local)
+`project-task-finish` calls this automatically if tests fail locally before creating a PR.
+
+### Integrated Workflow (CI/CD)
+To enable true autonomous self-healing in your CI pipeline, you can use the `github-actions-template/workflows/ci-auto-fix.yml` template. 
+When tests fail on a Pull Request, this workflow will automatically post a comment (e.g., `/agent The CI tests failed...`), which wakes up the `github-cloud-agent` to analyze the CI logs and push a fix.
 
 ## Debugging Strategy
 
