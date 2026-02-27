@@ -125,26 +125,44 @@ link_antigravity_skills() {
     if [ -c /dev/tty ]; then
       echo ""
       info "Which directory does your agent use for skills?"
-      echo "  1) .agents  (default, Universal)"
-      echo "  2) .agent   (e.g., Antigravity)"
-      echo "  3) _agents"
-      echo "  4) _agent"
-      echo "  5) Do not create symlinks for this project"
+      echo "  1) Universal / Multiple (.agents)"
+      echo "  2) Antigravity          (.agent)"
+      echo "  3) Claude Code          (.claude)"
+      echo "  4) Cline                (.cline)"
+      echo "  5) Roo Code             (.roo)"
+      echo "  6) Augment              (.augment)"
+      echo "  7) CodeBuddy            (.codebuddy)"
+      echo "  8) Command Code         (.commandcode)"
+      echo "  9) Continue             (.continue)"
+      echo " 10) OpenClaw             (skills)"
+      echo " 11) Do not create project symlinks"
       
       # Read from /dev/tty to support 'curl | bash' installs
-      read -p "Select option [1-5, default 1]: " opt < /dev/tty || opt=1
+      read -p "Select option [1-11, default 1]: " opt < /dev/tty || opt=1
     fi
     
     case "$opt" in
-      2) agent_dir_name=".agent"   ;;
-      3) agent_dir_name="_agents"  ;;
-      4) agent_dir_name="_agent"   ;;
-      5) info "Skipping project symlinks."; return 0 ;;
-      *) agent_dir_name=".agents"  ;;
+      2) agent_dir_name=".agent"       ;;
+      3) agent_dir_name=".claude"      ;;
+      4) agent_dir_name=".cline"       ;;
+      5) agent_dir_name=".roo"         ;;
+      6) agent_dir_name=".augment"     ;;
+      7) agent_dir_name=".codebuddy"   ;;
+      8) agent_dir_name=".commandcode" ;;
+      9) agent_dir_name=".continue"    ;;
+     10) agent_dir_name=""             ;;
+     11) info "Skipping project symlinks."; return 0 ;;
+      *) agent_dir_name=".agents"      ;;
     esac
 
-    local target_dir="$PWD/$agent_dir_name/skills"
-    info "Setting up Antigravity skills at $target_dir..."
+    local target_dir="$PWD"
+    if [ -n "$agent_dir_name" ]; then
+      target_dir="$target_dir/$agent_dir_name/skills"
+    else
+      target_dir="$target_dir/skills" # For OpenClaw
+    fi
+    
+    info "Setting up AI skills at $target_dir..."
     mkdir -p "$target_dir"
     
     for skill_md in "$skills_dir"/*/SKILL.md; do
