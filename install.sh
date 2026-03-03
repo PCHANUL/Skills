@@ -179,6 +179,38 @@ link_antigravity_skills() {
   fi
 }
 
+# ---- Config GitHub Actions ----
+
+setup_github_actions() {
+  local skills_dir="$1"
+  
+  # Only prompt if not in the skills repo itself or HOME
+  if [[ "$PWD" != "$skills_dir" && "$PWD" != "$HOME" ]]; then
+    local opt="N"
+    
+    if [ -c /dev/tty ]; then
+      echo ""
+      info "Do you want to install GitHub Actions workflows for the AI Agent?"
+      echo "  This will copy 'agent.yml' and 'ci-auto-fix.yml' to .github/workflows/"
+      read -p "Install workflows? [y/N]: " opt < /dev/tty || opt="N"
+    fi
+    
+    if [[ "$opt" =~ ^[Yy]$ ]]; then
+      local target_dir="$PWD/.github/workflows"
+      info "Setting up GitHub Actions at $target_dir..."
+      mkdir -p "$target_dir"
+      
+      # Copy specific workflows
+      cp "$skills_dir/github-cloud-agent/workflows/agent.yml" "$target_dir/" 2>/dev/null || true
+      cp "$skills_dir/github-actions-template/workflows/ci-auto-fix.yml" "$target_dir/" 2>/dev/null || true
+      
+      export GH_ACTIONS_INSTALLED="true"
+    else
+      info "Skipping GitHub Actions setup."
+    fi
+  fi
+}
+
 # ---- Commands ----
 
 cmd_install() {
@@ -206,6 +238,7 @@ cmd_install() {
   update_claude_md "$SKILLS_DIR"
 
   link_antigravity_skills "$SKILLS_DIR"
+  setup_github_actions "$SKILLS_DIR"
 
   print_result "installed"
 }
@@ -228,6 +261,7 @@ cmd_update() {
   update_claude_md "$SKILLS_DIR"
 
   link_antigravity_skills "$SKILLS_DIR"
+  setup_github_actions "$SKILLS_DIR"
 
   print_result "updated"
 }
@@ -252,6 +286,9 @@ print_result() {
   local agent_dir="${AGENT_DIR_NAME:-.agents}"
   if [[ -d "$PWD/$agent_dir/skills" && "$PWD" != "$SKILLS_DIR" ]]; then
     echo "  Project Link     : $PWD/$agent_dir/skills (Symlinked)"
+  fi
+  if [[ "${GH_ACTIONS_INSTALLED:-}" == "true" ]]; then
+    echo "  GitHub Actions   : Installed in .github/workflows/"
   fi
   echo ""
   echo "  Commands:"
