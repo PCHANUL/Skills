@@ -26,3 +26,94 @@
 - **주요 작업**: 통합 브랜치의 모든 작업이 병합되어 완료되면, 최종적으로 `main` 브랜치로 PR을 날려 배포 준비를 마칩니다.
 
 > 각 스킬 폴더 내부의 `SKILL.md`를 확인하면 구체적인 명령어 사용 방법과 작동 원리를 파악할 수 있습니다.
+
+---
+
+## Quick Start — Install
+
+### 원라인 설치 (새 프로젝트에 처음 적용할 때)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PCHANUL/Skills/main/install.sh | bash
+```
+
+### 기존 프로젝트에 서브모듈로 추가
+
+```bash
+git submodule add https://github.com/PCHANUL/Skills.git Skills
+bash Skills/install.sh
+```
+
+### 설치 과정에서 묻는 항목
+
+1. **호스트 에이전트 선택** — 사용 중인 AI 에이전트에 맞는 스킬 디렉토리를 선택합니다.
+   ```
+   1) Universal / Multiple (.agents)
+   2) Antigravity          (.agent)
+   3) Claude Code          (.claude)
+   4) Cline                (.cline)
+   ...
+   ```
+   선택하면 해당 경로(예: `.agent/skills/`)에 스킬들이 심볼릭 링크로 연결됩니다.
+
+2. **GitHub Actions 설치 여부** — CI/CD 자동화 워크플로우를 프로젝트에 설치할지 선택합니다.
+   - `agent.yml` — 이슈 코멘트로 AI 에이전트를 트리거하는 Cloud Agent
+   - `ci-auto-fix.yml` — 테스트 실패 시 자동으로 에이전트를 호출하는 Self-Healing CI
+
+### 업데이트
+
+```bash
+bash ~/Skills/install.sh --update
+```
+
+---
+
+## 사용법 — Project Workflow
+
+`project-workflow`는 프로젝트의 기획부터 배포까지 전체 사이클을 자동화하는 마스터 가이드입니다.
+
+### Step 1. 기획 (Planning)
+
+AI 에이전트에게 프로젝트를 설명하면, `project-planner` 스킬이 마일스톤과 이슈를 정리한 `PROJECT_TODO.md`를 작성합니다.
+
+```
+> "project-planner로 Todo 앱을 기획해줘"
+```
+
+### Step 2. GitHub 동기화 (Setup)
+
+작성된 계획을 GitHub 마일스톤 및 이슈로 동기화합니다.
+
+```bash
+python3 ~/Skills/project-setup/scripts/sync_to_github.py \
+  --file PROJECT_TODO.md \
+  --repo owner/repo
+```
+
+### Step 3. 자동 실행 (Execution)
+
+`project-driver`가 이슈를 순서대로 처리합니다. 각 이슈마다 브랜치 생성 → 구현 → PR 생성 → 코드 리뷰 → 병합 사이클을 자동으로 수행합니다.
+
+```bash
+python3 ~/Skills/project-driver/scripts/drive.py --milestone "Phase 1: MVP"
+```
+
+중간에 중단된 경우 아래 명령으로 이어서 재개할 수 있습니다.
+
+```bash
+python3 ~/Skills/project-driver/scripts/drive.py --resume
+```
+
+### Step 4. 배포 (Completion)
+
+마일스톤의 모든 이슈가 완료되면, 통합 브랜치(`milestone/phase-1`)에서 `main`으로의 Release PR이 자동 생성됩니다.
+
+### 주요 명령어 요약
+
+| 단계 | 명령어 |
+| :--- | :--- |
+| **기획** | `PROJECT_TODO.md` 작성 (에이전트에게 요청) |
+| **동기화** | `python3 ~/Skills/project-setup/scripts/sync_to_github.py --file PROJECT_TODO.md --repo owner/repo` |
+| **실행** | `python3 ~/Skills/project-driver/scripts/drive.py --milestone "Phase 1: MVP"` |
+| **재개** | `python3 ~/Skills/project-driver/scripts/drive.py --resume` |
+| **진행률** | `python3 ~/Skills/project-task-implementer/scripts/track_progress.py list` |
