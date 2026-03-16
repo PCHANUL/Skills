@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# Antigravity Skills - Install & Update Script for Claude Code
+# Antigravity Skills - Install & Update Script for Claude Code, Codex, and other agents
 # ============================================================
 #
 # Usage:
@@ -17,6 +17,10 @@ REPO_URL="https://github.com/PCHANUL/Skills.git"
 SKILLS_DIR="$HOME/Skills"
 CLAUDE_DIR="$HOME/.claude"
 CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+CODEX_SKILLS_DIR="$CODEX_HOME/skills"
+AGENTS_HOME_DIR="$HOME/.agents"
+AGENTS_HOME_SKILLS_DIR="$AGENTS_HOME_DIR/skills"
 
 SKILL_BLOCK_START="<!-- SKILLS:START -->"
 SKILL_BLOCK_END="<!-- SKILLS:END -->"
@@ -82,6 +86,36 @@ generate_skill_block() {
   echo "$SKILL_BLOCK_END"
 }
 
+generate_agents_block() {
+  local skills_dir="$1"
+
+  echo "$SKILL_BLOCK_START"
+  echo "## Skills"
+  echo "A skill is a set of local instructions to follow that is stored in a \`SKILL.md\` file."
+  echo "The skills below are installed from \`$skills_dir\`."
+  echo ""
+  echo "### Available skills"
+
+  for skill_md in "$skills_dir"/*/SKILL.md; do
+    [ -f "$skill_md" ] || continue
+    local parsed
+    parsed=$(parse_skill "$skill_md")
+    [ -z "$parsed" ] && continue
+
+    local name="${parsed%%|*}"
+    local desc="${parsed#*|}"
+    echo "- \`${name}\`: ${desc} (file: \`$skills_dir/${name}/SKILL.md\`)"
+  done
+
+  echo ""
+  echo "### How to use skills"
+  echo "- If the user names a skill or the task clearly matches one, read its \`SKILL.md\` first and follow that workflow."
+  echo "- Load only the files needed by the selected skill; avoid bulk-loading references."
+  echo "- Prefer the skill's scripts and templates when they exist."
+  echo "- If a skill cannot be applied cleanly, state the reason briefly and continue with the best fallback."
+  echo "$SKILL_BLOCK_END"
+}
+
 # ---- Update CLAUDE.md ----
 
 update_claude_md() {
@@ -112,6 +146,53 @@ update_claude_md() {
   fi
 }
 
+update_agents_md() {
+  local project_dir="$1"
+  local skills_dir="$2"
+  local agents_md="$project_dir/AGENTS.md"
+
+  if [ -f "$agents_md" ]; then
+    if grep -q "$SKILL_BLOCK_START" "$agents_md"; then
+      info "Updating existing skill block in $agents_md..."
+      temp_file=$(mktemp)
+      awk "/$SKILL_BLOCK_START/{skip=1} /$SKILL_BLOCK_END/{skip=0; next} !skip" "$agents_md" > "$temp_file"
+      mv "$temp_file" "$agents_md"
+      echo "" >> "$agents_md"
+      generate_agents_block "$skills_dir" >> "$agents_md"
+    else
+      info "Appending skill block to existing $agents_md..."
+      echo "" >> "$agents_md"
+      generate_agents_block "$skills_dir" >> "$agents_md"
+    fi
+  else
+    info "Creating $agents_md..."
+    generate_agents_block "$skills_dir" > "$agents_md"
+  fi
+}
+
+# ---- Config Codex ----
+
+link_codex_skills() {
+  local skills_dir="$1"
+
+  info "Linking skills for Codex and shared agents..."
+  mkdir -p "$CODEX_SKILLS_DIR" "$AGENTS_HOME_SKILLS_DIR"
+
+  for skill_md in "$skills_dir"/*/SKILL.md; do
+    [ -f "$skill_md" ] || continue
+    local s_dir
+    s_dir=$(dirname "$skill_md")
+    local s_name
+    s_name=$(basename "$s_dir")
+
+    ln -snf "$s_dir" "$CODEX_SKILLS_DIR/$s_name"
+    ln -snf "$s_dir" "$AGENTS_HOME_SKILLS_DIR/$s_name"
+  done
+
+  export CODEX_LINK_TARGET="$CODEX_SKILLS_DIR"
+  export SHARED_AGENTS_LINK_TARGET="$AGENTS_HOME_SKILLS_DIR"
+}
+
 # ---- Config Antigravity ----
 
 link_antigravity_skills() {
@@ -124,34 +205,42 @@ link_antigravity_skills() {
     
     if [ -c /dev/tty ]; then
       echo ""
-      info "Which directory does your agent use for skills?"
+      info "Which project-level agent setup do you want?"
       echo "  1) Universal / Multiple (.agents)"
-      echo "  2) Antigravity          (.agent)"
-      echo "  3) Claude Code          (.claude)"
-      echo "  4) Cline                (.cline)"
-      echo "  5) Roo Code             (.roo)"
-      echo "  6) Augment              (.augment)"
-      echo "  7) CodeBuddy            (.codebuddy)"
-      echo "  8) Command Code         (.commandcode)"
-      echo "  9) Continue             (.continue)"
-      echo " 10) OpenClaw             (skills)"
-      echo " 11) Do not create project symlinks"
+      echo "  2) Codex                (AGENTS.md)"
+      echo "  3) Antigravity          (.agent)"
+      echo "  4) Claude Code          (.claude)"
+      echo "  5) Cline                (.cline)"
+      echo "  6) Roo Code             (.roo)"
+      echo "  7) Augment              (.augment)"
+      echo "  8) CodeBuddy            (.codebuddy)"
+      echo "  9) Command Code         (.commandcode)"
+      echo " 10) Continue             (.continue)"
+      echo " 11) OpenClaw             (skills)"
+      echo " 12) Do not create project symlinks/config"
       
       # Read from /dev/tty to support 'curl | bash' installs
-      read -p "Select option [1-11, default 1]: " opt < /dev/tty || opt=1
+      read -p "Select option [1-12, default 1]: " opt < /dev/tty || opt=1
     fi
     
     case "$opt" in
-      2) agent_dir_name=".agent"       ;;
-      3) agent_dir_name=".claude"      ;;
-      4) agent_dir_name=".cline"       ;;
-      5) agent_dir_name=".roo"         ;;
-      6) agent_dir_name=".augment"     ;;
-      7) agent_dir_name=".codebuddy"   ;;
-      8) agent_dir_name=".commandcode" ;;
-      9) agent_dir_name=".continue"    ;;
-     10) agent_dir_name=""             ;;
-     11) info "Skipping project symlinks."; return 0 ;;
+      2)
+        info "Setting up Codex project instructions at $PWD/AGENTS.md..."
+        update_agents_md "$PWD" "$skills_dir"
+        export PROJECT_AGENT_TARGET="$PWD/AGENTS.md"
+        export PROJECT_AGENT_MODE="codex"
+        return 0
+        ;;
+      3) agent_dir_name=".agent"       ;;
+      4) agent_dir_name=".claude"      ;;
+      5) agent_dir_name=".cline"       ;;
+      6) agent_dir_name=".roo"         ;;
+      7) agent_dir_name=".augment"     ;;
+      8) agent_dir_name=".codebuddy"   ;;
+      9) agent_dir_name=".commandcode" ;;
+     10) agent_dir_name=".continue"    ;;
+     11) agent_dir_name=""             ;;
+     12) info "Skipping project setup."; return 0 ;;
       *) agent_dir_name=".agents"      ;;
     esac
 
@@ -176,6 +265,8 @@ link_antigravity_skills() {
     
     # Export for print_result to know what we used
     export AGENT_DIR_NAME="$agent_dir_name"
+    export PROJECT_AGENT_TARGET="$target_dir"
+    export PROJECT_AGENT_MODE="symlink"
   fi
 }
 
@@ -234,8 +325,9 @@ cmd_install() {
   find "$SKILLS_DIR" -name "*.sh" -exec chmod +x {} \;
   find "$SKILLS_DIR" -name "*.py" -exec chmod +x {} \;
 
-  info "Scanning skills and updating Claude Code config..."
+  info "Scanning skills and updating agent configs..."
   update_claude_md "$SKILLS_DIR"
+  link_codex_skills "$SKILLS_DIR"
 
   link_antigravity_skills "$SKILLS_DIR"
   setup_github_actions "$SKILLS_DIR"
@@ -257,8 +349,9 @@ cmd_update() {
   find "$SKILLS_DIR" -name "*.sh" -exec chmod +x {} \;
   find "$SKILLS_DIR" -name "*.py" -exec chmod +x {} \;
 
-  info "Re-scanning skills and updating Claude Code config..."
+  info "Re-scanning skills and updating agent configs..."
   update_claude_md "$SKILLS_DIR"
+  link_codex_skills "$SKILLS_DIR"
 
   link_antigravity_skills "$SKILLS_DIR"
   setup_github_actions "$SKILLS_DIR"
@@ -283,9 +376,18 @@ print_result() {
   echo "  Skills directory : $SKILLS_DIR"
   echo "  Skills found     : $count"
   echo "  Claude config    : $CLAUDE_MD"
-  local agent_dir="${AGENT_DIR_NAME:-.agents}"
-  if [[ -d "$PWD/$agent_dir/skills" && "$PWD" != "$SKILLS_DIR" ]]; then
-    echo "  Project Link     : $PWD/$agent_dir/skills (Symlinked)"
+  if [[ -n "${CODEX_LINK_TARGET:-}" ]]; then
+    echo "  Codex links      : ${CODEX_LINK_TARGET}"
+  fi
+  if [[ -n "${SHARED_AGENTS_LINK_TARGET:-}" ]]; then
+    echo "  Shared agents    : ${SHARED_AGENTS_LINK_TARGET}"
+  fi
+  if [[ -n "${PROJECT_AGENT_TARGET:-}" && "$PWD" != "$SKILLS_DIR" ]]; then
+    if [[ "${PROJECT_AGENT_MODE:-}" == "codex" ]]; then
+      echo "  Project Config   : ${PROJECT_AGENT_TARGET}"
+    else
+      echo "  Project Link     : ${PROJECT_AGENT_TARGET} (Symlinked)"
+    fi
   fi
   if [[ "${GH_ACTIONS_INSTALLED:-}" == "true" ]]; then
     echo "  GitHub Actions   : Installed in .github/workflows/"
