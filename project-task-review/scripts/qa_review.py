@@ -1,136 +1,210 @@
 import argparse
+import os
+import re
 import subprocess
 import sys
-import os
-import json
+from typing import Dict, List, Optional
 
-def run_command(cmd_list):
-    """Runs a shell command and returns output (string), or None on failure."""
+DEFAULT_PROGRESS_FILE = "TASK_PROGRESS.md"
+TASK_MARKER = "## Task Checklist"
+
+
+def run_command(cmd_list: List[str], check: bool = True) -> Optional[str]:
     try:
-        result = subprocess.run(cmd_list, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd_list, capture_output=True, text=True, check=check)
         return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error running {' '.join(cmd_list)}: {e.stderr}")
+    except subprocess.CalledProcessError as error:
+        stderr = error.stderr.strip() if error.stderr else ""
+        if check:
+            print(f"Error running command: {' '.join(cmd_list)}")
+            if stderr:
+                print(stderr)
         return None
 
-def fetch_changed_files(pr_number):
-    """
-    Returns a list of changed file paths for the given PR.
-    """
-    # Create temp files for PR content
-    # For simplicity, we just list files here. 
-    # In a real pipeline, we'd need to fetch the diff or use `gh pr view --json files`
-    output = run_command(['gh', 'pr', 'view', str(pr_number), '--json', 'files', '--jq', '.files[].path'])
+
+def read_progress_file(path: str) -> Dict[str, object]:
+    data: Dict[str, object] = {
+        "sections": {},
+        "tasks": [],
+    }
+    if not os.path.exists(path):
+        return data
+
+    with open(path, "r", encoding="utf-8") as file:
+        lines = [line.rstrip("\n") for line in file]
+
+    current_section: Optional[str] = None
+    in_tasks = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if stripped == TASK_MARKER:
+            current_section = None
+            in_tasks = True
+            continue
+
+        if stripped.startswith("## "):
+            current_section = stripped[3:]
+            data["sections"].setdefault(current_section, [])
+            in_tasks = current_section == "Task Checklist"
+            continue
+
+        if in_tasks and stripped.startswith("- ["):
+            match = re.match(r"- \[( |x)\] (\d+)\.\s+(.*)", stripped)
+            if match:
+                data["tasks"].append(
+                    {
+                        "done": match.group(1) == "x",
+                        "index": int(match.group(2)),
+                        "text": match.group(3).strip(),
+                    }
+                )
+            continue
+
+        if current_section and stripped.startswith("- "):
+            data["sections"][current_section].append(stripped[2:].strip())
+
+    return data
+
+
+def section_items(progress: Dict[str, object], name: str) -> List[str]:
+    sections = progress.get("sections", {})
+    if not isinstance(sections, dict):
+        return []
+    items = sections.get(name, [])
+    return items if isinstance(items, list) else []
+
+
+def progress_title(progress: Dict[str, object]) -> str:
+    for item in section_items(progress, "Issue"):
+        if item.startswith("Title:"):
+            return item.replace("Title:", "", 1).strip()
+    return ""
+
+
+def fetch_changed_files(pr_number: int) -> List[str]:
+    output = run_command(["gh", "pr", "view", str(pr_number), "--json", "files", "--jq", ".files[].path"], check=False)
     if not output:
         return []
-    return output.splitlines()
+    return [line for line in output.splitlines() if line.strip()]
 
-def fetch_full_content(file_path):
-    """
-    Reads the full content of a file from the local checkout (assuming branch checked out).
-    If file doesn't exist (deleted), returns empty string.
-    """
+
+def fetch_full_content(file_path: str) -> str:
     if not os.path.exists(file_path):
         return ""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except Exception as e:
-        return f"[Error reading file: {e}]"
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()
+    except OSError as error:
+        return f"[Error reading file: {error}]"
 
-def run_linter():
-    """
-    Detects language and runs appropriate linter.
-    Currently supports Dart/Flutter.
-    Returns linter output string.
-    """
-    output = ""
-    # Check for pubspec.yaml -> Flutter/Dart
-    if os.path.exists('pubspec.yaml'):
-        print("Detected Flutter/Dart project. Running `flutter analyze`...")
-        try:
-            # capture_output=True creates a completed process object
-            proc = subprocess.run(['flutter', 'analyze'], capture_output=True, text=True)
-            output += f"--- Flutter Analyze Output ---\n{proc.stdout}\n{proc.stderr}\n"
-        except FileNotFoundError:
-            output += "Error: `flutter` command not found.\n"
-    
-    # Add more linters here (e.g., eslint for JS)
-    
-    return output
 
-def load_conventions():
-    """
-    Tries to load `docs/CONVENTIONS.md`. If not found, returns generic advice.
-    """
-    conventions_path = "docs/CONVENTIONS.md"
-    if os.path.exists(conventions_path):
-        try:
-            with open(conventions_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except:
-            pass
-    return "Standard Clean Code principles (DRY, SOLID, Clear Naming)."
+def build_bundle(pr_number: int, progress: Dict[str, object], changed_files: List[str]) -> str:
+    title = progress_title(progress) or f"PR #{pr_number}"
+    parts: List[str] = [
+        f"# Review Context For PR #{pr_number}",
+        "",
+        f"Issue: {title}",
+        "",
+        "## Target Outcome",
+    ]
 
-def analyze_pr(pr_number):
-    print(f"Starting QA Analysis for PR #{pr_number}...")
+    target = section_items(progress, "Target outcome")
+    if target:
+        parts.extend(f"- {item}" for item in target)
+    else:
+        parts.append("- No target outcome recorded.")
 
-    # 1. Provide Context: Changed Files
-    changed_files = fetch_changed_files(pr_number)
-    if not changed_files:
-        print("No changed files found or error fetching PR details.")
-        return
+    parts.extend(["", "## Current Code Reality"])
+    current = section_items(progress, "Current code reality")
+    if current:
+        parts.extend(f"- {item}" for item in current)
+    else:
+        parts.append("- No current code reality recorded.")
 
-    # 2. Provide Context: Diff & Full Content
-    # We construct a prompt for the Agent.
-    prompt_context = f"# Code Review Context for PR #{pr_number}\n\n"
-    
-    # 3. Linter Results
-    linter_output = run_linter()
-    prompt_context += f"## Linter Results\n```\n{linter_output}\n```\n\n"
+    parts.extend(["", "## Definition Of Done"])
+    done_items = section_items(progress, "Definition of done")
+    if done_items:
+        parts.extend(f"- {item}" for item in done_items)
+    else:
+        parts.append("- No definition of done recorded.")
 
-    # 4. Conventions
-    conventions = load_conventions()
-    prompt_context += f"## Project Conventions\n{conventions}\n\n"
-    
-    prompt_context += "## File Changes Analysis\n"
+    parts.extend(["", "## Verification"])
+    verification = section_items(progress, "Verification")
+    if verification:
+        parts.extend(f"- {item}" for item in verification)
+    else:
+        parts.append("- No verification steps recorded.")
 
-    for file_path in changed_files:
-        # Ignore non-code files (images, locks)
-        if file_path.endswith(('.png', '.jpg', '.lock', '.resolved')):
+    parts.extend(["", "## Changed Files"])
+    if changed_files:
+        parts.extend(f"- {path}" for path in changed_files)
+    else:
+        parts.append("- No changed files found.")
+
+    for path in changed_files:
+        if path.endswith((".png", ".jpg", ".jpeg", ".gif", ".lock", ".resolved")):
             continue
-            
-        full_content = fetch_full_content(file_path)
-        
-        prompt_context += f"\n### File: {file_path}\n"
-        prompt_context += "#### Full Content (for context):\n"
-        prompt_context += f"```\n{full_content}\n```\n"
-        
-        # In a real advanced script, we might include specific diff chunks here too.
-        # But for Agent use, Full Content is often more valuable for logic checks.
+        content = fetch_full_content(path)
+        parts.extend(
+            [
+                "",
+                f"## File: {path}",
+                "```",
+                content,
+                "```",
+            ]
+        )
 
-    print("\n" + "="*50)
-    print("READY FOR AGNET REVIEW")
-    print("="*50)
-    print("The following is the structured context for the PR Review.")
-    print("AGENT: Please read this output, analyze the code against the conventions, and perform `gh pr review`.")
-    print("-" * 50)
-    print(prompt_context)
-    print("-" * 50)
+    parts.extend(
+        [
+            "",
+            "## Review Questions",
+            "1. Does the implementation match the target outcome?",
+            "2. Does the diff actually satisfy the definition of done?",
+            "3. Are there gaps between the changed files and the remaining code reality mismatches?",
+            "4. Are the required verification steps reflected in the implementation and PR state?",
+            "5. Is there any scope leakage or regression outside the week boundary?",
+        ]
+    )
+
+    return "\n".join(parts)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Automated QA & Code Review Helper')
-    subparsers = parser.add_subparsers(dest='command', required=True)
+def analyze_pr(pr_number: int, progress_file: str) -> None:
+    progress = read_progress_file(progress_file)
+    changed_files = fetch_changed_files(pr_number)
+    bundle = build_bundle(pr_number, progress, changed_files)
 
-    # Analyze command
-    analyze_parser = subparsers.add_parser('analyze', help='Fetch context and prepare review prompt')
-    analyze_parser.add_argument('--pr', type=int, required=True, help='PR number')
+    print("=" * 60)
+    print("READY FOR AGENT REVIEW")
+    print("=" * 60)
+    print(bundle)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Prepare a deep review context bundle for a PR.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    analyze_parser = subparsers.add_parser("analyze", help="Prepare review context for a PR")
+    analyze_parser.add_argument("--pr", type=int, required=True, help="PR number")
+    analyze_parser.add_argument(
+        "--progress-file",
+        default=DEFAULT_PROGRESS_FILE,
+        help=f"Path to progress file (default: {DEFAULT_PROGRESS_FILE})",
+    )
 
     args = parser.parse_args()
 
-    if args.command == 'analyze':
-        analyze_pr(args.pr)
+    if args.command == "analyze":
+        analyze_pr(args.pr, args.progress_file)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

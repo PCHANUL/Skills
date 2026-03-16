@@ -1,48 +1,48 @@
 ---
 name: project-driver
-description: "The orchestrator that drives the project forward by iterating through open issues and executing the full development cycle (Start -> Implement -> Finish) for each one."
+description: "The orchestrator for the week-issue workflow: reads detailed issue context, coordinates implementer/debugger/review/finish, and advances milestone work issue by issue."
 ---
 
 # Project Driver Skill
 
-This skill is the **Project Manager Agent**. It doesn't write code itself, but it manages the flow of work. It looks at the GitHub Project (or Milestone), picks the next available task, and instructs the `project-task-*` skills to execute it. Then it repeats this process until all tasks in the milestone are complete.
+This skill is the project orchestrator. It does not replace the implementation agent. It coordinates the full cycle around the detailed week-issue format and keeps the process aligned with the stored task context.
 
 ## Capabilities
 
 1.  **Iterate Milestone (`drive_milestone`)**:
-    -   Fetches all open issues for a specific Milestone.
-    -   Sorts them by priority or dependency (if labeled).
-    -   Sequentially executes the development cycle for each issue.
+    - Fetches open issues for a milestone.
+    - Processes them in order.
+    - Restores interrupted state when needed.
 
 2.  **Execute Cycle (`execute_cycle`)**:
-    -   Calls `project-task-start` to initialize the task.
-    -   **Pauses** to let the Agent (User) or `project-task-implementer` do the coding.
-    -   Calls `project-task-finish` to create the PR.
-    -   Calls `project-task-review` to check the PR.
+    - Calls `project-task-start`.
+    - Extracts the key week context from the GitHub issue body.
+    - Hands off to `project-task-implementer` with explicit notes about `Read first`, `Target outcome`, and `Verification`.
+    - Calls `project-task-finish` with progress-aware verification.
+    - Calls `project-task-review` as the objective gate.
+    - Loops back through implementation and debugging when review fails.
 
 3.  **Release Milestone (`create_release`)**:
-    -   Automatically triggered when all open issues are closed.
-    -   Generates a "Release PR" merging the implementation branch (`milestone/phase-1`) into `main`.
-    -   Auto-populates release notes with a checklist of closed issues.
+    - Creates the release PR from the milestone integration branch to `main`.
+    - Summarizes closed milestone issues in the release body.
 
 ## Instructions
 
 ### Usage
 
-To start driving a specific milestone:
+To drive a milestone:
 
 ```bash
-python3 ~/Skills/project-driver/scripts/drive_project.py --milestone "Phase 1: Setup"
+python3 skills/project-driver/scripts/drive.py --milestone "Phase 1: v2 Data Model & Contracts"
 ```
 
-**Note**: This script is designed to be interactive. It will likely ask for confirmation before starting the next task or after the implementation step is done.
+The driver is still interactive at the implementation boundary, but it should automate the context and review handoff around that pause.
 
 ### Workflow
-1.  **Driver**: "Found 5 open issues in Milestone 'Phase 1'. Starting Issue #1: 'Setup Project Structure'."
-2.  **Driver**: Executes `project-task-start`.
-3.  **Driver**: "Task #1 waiting for implementation. Agent, please implement the code now."
-4.  **Agent**: (Uses `project-task-implementer` to write code).
-5.  **Driver**: "Implementation marked as done. Running `project-task-finish` to create/update PR."
-6.  **Driver**: "Running `project-review` check..."
-    -   If **Passed**: Automerge and proceed to next issue.
-    -   If **Changes Requested**: Loop back to Step 3 (Implementation) for fixes.
+1. Driver fetches the next issue and prints the week context summary.
+2. Driver runs `project-task-start`.
+3. Agent uses `project-task-implementer` and stores context in `TASK_PROGRESS.md`.
+4. Driver runs `project-task-finish --use-progress-verification`.
+5. Driver runs `project-task-review` against the resulting PR.
+6. If review fails, driver points the agent to `project-task-debugger` or another implementation pass.
+7. If review passes, driver merges, closes the issue, and updates the integration PR.
