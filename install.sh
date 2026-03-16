@@ -41,7 +41,8 @@ parse_skill() {
   local skill_md="$1"
   local name="" description=""
 
-  while IFS= read -r line; do
+  # Use pipe instead of process substitution for /dev/fd compatibility
+  sed -n '/^---$/,/^---$/p' "$skill_md" | grep -v '^---$' | while IFS= read -r line; do
     if [[ "$line" =~ ^name:\ *(.+)$ ]]; then
       name="${BASH_REMATCH[1]}"
       name="${name#\"}" ; name="${name%\"}"
@@ -49,11 +50,11 @@ parse_skill() {
       description="${BASH_REMATCH[1]}"
       description="${description#\"}" ; description="${description%\"}"
     fi
-  done < <(sed -n '/^---$/,/^---$/p' "$skill_md" | grep -v '^---$')
-
-  if [ -n "$name" ] && [ -n "$description" ]; then
-    echo "$name|$description"
-  fi
+    if [ -n "$name" ] && [ -n "$description" ]; then
+      echo "$name|$description"
+      break
+    fi
+  done
 }
 
 # ---- Generate skill block dynamically ----
