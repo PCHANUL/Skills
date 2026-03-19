@@ -14,6 +14,17 @@ def main():
     content = f"""# {args.title} Detailed Todo List
 
 > {args.description}
+>
+> This file is intended to be issue-ready. Assume each week may be assigned to a different implementer.
+> Each week section should contain enough context to execute without prior conversation history.
+
+---
+
+## How To Use This Document
+
+- Before implementing a week, read the documents listed under `Read first`.
+- Update both the code and the plan if the current code reality has changed.
+- Do not leave a week without `Definition of done` and `Verification`.
 
 ---
 """
@@ -28,20 +39,42 @@ def main():
         
         for w in range(args.weeks):
             content += f"\n### Week {week_number}: [Week {week_number} Goal]\n"
-            
-            # Add placeholders for detailed tasks
-            content += f"\n#### {week_number}.1 [Category 1 - e.g., UI Components]\n"
-            content += f"- [ ] [Specific Task 1]\n"
-            content += f"  ```bash\n  # Optional command or snippet\n  ```\n"
-            content += f"- [ ] [Specific Task 2]\n"
-            
-            content += f"\n#### {week_number}.2 [Category 2 - e.g., Logic & State]\n"
-            content += f"- [ ] [Detailed Task A]\n"
-            content += f"- [ ] [Detailed Task B]\n"
-            
-            content += f"\n#### {week_number}.3 [Category 3 - e.g., Testing & Polish]\n"
-            content += f"- [ ] [Unit Test Implementation]\n"
-            content += f"- [ ] [Manual Verification]\n"
+            content += "\n**Why this week exists**\n"
+            content += "- [Explain why this week matters in the overall plan]\n"
+            content += "\n**Read first**\n"
+            content += "- `[spec/doc/path.md]`\n"
+            content += "- `[architecture/doc/path.md]`\n"
+            content += "\n**Current code reality**\n"
+            content += "- [Describe what currently exists and what is still wrong, missing, or legacy]\n"
+            content += "\n**Target outcome**\n"
+            content += "- [Describe what must be true when this week is complete]\n"
+
+            content += f"\n#### {week_number}.1 [Category 1 - e.g., Contracts / Schema / Models]\n"
+            content += "- [ ] [Specific Task 1]\n"
+            content += "- [ ] [Specific Task 2]\n"
+
+            content += f"\n#### {week_number}.2 [Category 2 - e.g., Business Logic / Services]\n"
+            content += "- [ ] [Detailed Task A]\n"
+            content += "- [ ] [Detailed Task B]\n"
+
+            content += f"\n#### {week_number}.3 [Category 3 - e.g., UI / Testing / Migration]\n"
+            content += "- [ ] [Detailed Task C]\n"
+            content += "- [ ] [Detailed Task D]\n"
+
+            content += "\n**Files likely touched**\n"
+            content += "- `[path/to/file]`\n"
+            content += "- `[path/to/another-file]`\n"
+
+            content += "\n**Out of scope**\n"
+            content += "- [Clarify what this week should not try to solve]\n"
+
+            content += "\n**Definition of done**\n"
+            content += "- [Observable completion criterion 1]\n"
+            content += "- [Observable completion criterion 2]\n"
+
+            content += "\n**Verification**\n"
+            content += "- `[command to run]`\n"
+            content += "- [Manual verification scenario]\n"
 
             week_number += 1
         

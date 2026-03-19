@@ -1,20 +1,27 @@
 import argparse
+import json
+import os
 import re
 import subprocess
 import sys
-import time
+import tempfile
 from typing import Dict, List, Optional
 
 
-def run_gh_command(command_list: List[str]) -> Optional[str]:
-    """Runs a gh CLI command and returns stdout; returns None on failure."""
-    try:
-        result = subprocess.run(command_list, capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        err = (e.stderr or "").strip()
-        print(f"Error running command {' '.join(command_list)}: {err}")
+def run_gh_command(command_list: List[str], check: bool = True) -> Optional[str]:
+    """Run a gh command and return stdout."""
+    result = subprocess.run(command_list, capture_output=True, text=True)
+    if check and result.returncode != 0:
+        print(f"Error running command {' '.join(command_list)}:\n{result.stderr}")
+        raise RuntimeError(result.stderr.strip())
+    if result.returncode != 0:
         return None
+    return result.stdout.strip()
+
+
+def run_gh_json(command_list: List[str]):
+    output = run_gh_command(command_list)
+    return json.loads(output) if output else None
 
 
 def _normalized_heading(text: str) -> str:
@@ -86,7 +93,7 @@ def _parse_week_sections(raw_lines: List[str]) -> Dict[str, List]:
                 continue
 
             # Bold section header (e.g., **Files likely touched**)
-            bold_match = re.match(r"^\*\*(.+?)\*\*:?\s*$", stripped)
+            bold_match = re.match(r"^\*\*(.+?)\*\*:?")
             if bold_match:
                 heading = _normalized_heading(bold_match.group(1))
                 if "files likely touched" in heading or "likely touched" in heading or "관련 파일" in heading:
@@ -132,7 +139,6 @@ def _parse_week_sections(raw_lines: List[str]) -> Dict[str, List]:
         else:
             sections["misc"].append(stripped)
 
-    # Remove empty categories
     sections["categories"] = [c for c in sections["categories"] if c["lines"]]
     return sections
 
@@ -150,8 +156,8 @@ def _format_bullets(lines: List[str]) -> List[str]:
     return formatted
 
 
-def build_simple_issue_body(week_num: str, raw_lines: List[str]) -> str:
-    body_lines = [f"# Week {week_num} Tasks", ""]
+def build_simple_issue_body(week_num: str, raw_lines: List[str], source_file: str) -> str:
+    body_lines = [f"Source of truth: `{source_file}`", "", f"# Week {week_num} Tasks", ""]
     for raw in raw_lines:
         stripped = raw.strip()
         if not stripped:
@@ -286,12 +292,12 @@ def parse_markdown(
     detailed_issues: bool = True,
     reference_docs: Optional[List[str]] = None,
 ):
-    """Parses task list markdown into phase/week structures."""
+    """Parse task list markdown into phase/week structures."""
     phases = []
     reference_docs = reference_docs or []
 
     try:
-        with open(file_path, "r") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
     except FileNotFoundError:
         print(f"Error: File not found {file_path}")
@@ -317,6 +323,7 @@ def parse_markdown(
                 current_week["body"] = build_simple_issue_body(
                     week_num=current_week["number"],
                     raw_lines=current_week_raw,
+                    source_file=file_path,
                 )
             current_phase["weeks"].append(current_week)
         current_week = None
@@ -325,7 +332,6 @@ def parse_markdown(
     for raw_line in lines:
         line = raw_line.strip()
 
-        # Match Phase: "## 📋 Phase 1: Phase Name (Week 1-4)"
         phase_match = re.match(r"^##\s+.*?Phase\s+(\d+):\s+(.*)", line)
         if phase_match:
             finalize_current_week()
@@ -341,7 +347,6 @@ def parse_markdown(
             }
             continue
 
-        # Match Week: "### Week 1: Week Goal"
         week_match = re.match(r"^###\s+Week\s+(\d+):\s+(.*)", line)
         if week_match:
             finalize_current_week()
@@ -365,9 +370,95 @@ def parse_markdown(
     return phases
 
 
+def get_existing_milestones(repo: str) -> Dict[str, dict]:
+    milestones = run_gh_json(["gh", "api", f"repos/{repo}/milestones?state=all&per_page=100"]) or []
+    return {milestone["title"]: milestone for milestone in milestones}
+
+
+def ensure_milestone(repo: str, title: str) -> dict:
+    existing = get_existing_milestones(repo)
+    if title in existing:
+        print(f"Reusing Milestone: {title}")
+        return existing[title]
+
+    print(f"Creating Milestone: {title}")
+    milestone = run_gh_json(["gh", "api", f"repos/{repo}/milestones", "-f", f"title={title}"])
+    print(f"  > Created Milestone #{milestone['number']}")
+    return milestone
+
+
+def get_existing_issues(repo: str) -> Dict[str, dict]:
+    issues = run_gh_json(["gh", "api", f"repos/{repo}/issues?state=all&per_page=200"]) or []
+    issue_map = {}
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        issue_map[issue["title"]] = issue
+    return issue_map
+
+
+def upsert_issue(repo: str, title: str, body: str, milestone_title: str):
+    issues = get_existing_issues(repo)
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(body)
+        tmp_path = tmp.name
+
+    try:
+        if title in issues:
+            issue_number = str(issues[title]["number"])
+            print(f"Updating Issue: {title}")
+            run_gh_command(
+                [
+                    "gh",
+                    "issue",
+                    "edit",
+                    issue_number,
+                    "--repo",
+                    repo,
+                    "--body-file",
+                    tmp_path,
+                    "--milestone",
+                    milestone_title,
+                    "--add-label",
+                    "enhancement",
+                ]
+            )
+            print(f"  > Updated Issue #{issue_number}")
+            return
+
+        print(f"Creating Issue: {title}")
+        issue_url = run_gh_command(
+            [
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                repo,
+                "--title",
+                title,
+                "--body-file",
+                tmp_path,
+                "--milestone",
+                milestone_title,
+                "--label",
+                "enhancement",
+            ]
+        )
+        if issue_url:
+            print(f"  > Created Issue: {issue_url}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+
+
 def _branch_exists(repo: str, branch_name: str) -> bool:
-    cmd = ["gh", "api", f"repos/{repo}/git/ref/heads/{branch_name}", "--jq", ".ref"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/git/ref/heads/{branch_name}"],
+        capture_output=True,
+        text=True,
+    )
     return result.returncode == 0
 
 
@@ -400,171 +491,100 @@ def _select_unique_branch_name(repo: str, phase_number: str, branch_word: str) -
     raise RuntimeError("Unable to find an available milestone branch name.")
 
 
-def _open_pr_exists(repo: str, branch_name: str) -> bool:
-    cmd = [
-        "gh",
-        "pr",
-        "list",
-        "--repo",
-        repo,
-        "--state",
-        "open",
-        "--head",
-        branch_name,
-        "--json",
-        "url",
-        "--jq",
-        ".[0].url",
-    ]
-    result = run_gh_command(cmd)
-    return bool(result)
+def ensure_branch(repo: str, phase_number: str, branch_word: str) -> str:
+    branch_name = _select_unique_branch_name(repo, phase_number, branch_word)
+
+    print(f"Creating Integration Branch: {branch_name} from main...")
+    main_sha = run_gh_command(["gh", "api", f"repos/{repo}/git/ref/heads/main", "--jq", ".object.sha"])
+    tree_sha = run_gh_command(["gh", "api", f"repos/{repo}/git/commits/{main_sha}", "--jq", ".tree.sha"])
+    new_commit_sha = run_gh_command(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/git/commits",
+            "-f",
+            f"message=chore: start milestone {branch_word} phase-{phase_number}",
+            "-f",
+            f"tree={tree_sha}",
+            "-f",
+            f"parents[]={main_sha}",
+            "--jq",
+            ".sha",
+        ]
+    )
+    run_gh_command(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/git/refs",
+            "-f",
+            f"ref=refs/heads/{branch_name}",
+            "-f",
+            f"sha={new_commit_sha}",
+        ]
+    )
+    print(f"  > Created Remote Branch: {branch_name}")
+    return branch_name
+
+
+def get_existing_prs(repo: str) -> List[dict]:
+    return run_gh_json(["gh", "api", f"repos/{repo}/pulls?state=all&per_page=200"]) or []
+
+
+def ensure_integration_pr(repo: str, phase_title: str, branch_name: str):
+    pr_title = f"[{phase_title}] Integration PR"
+    for pr in get_existing_prs(repo):
+        if pr.get("title") == pr_title or pr.get("head", {}).get("ref") == branch_name:
+            print(f"Reusing Pull Request: {pr_title}")
+            return pr
+
+    print(f"Creating Pull Request for {branch_name}...")
+    pr_body = (
+        f"Integration PR for **{phase_title}**.\n"
+        "All related feature branches for this milestone will be merged into this phase branch before a final release to `main`."
+    )
+    pr_url = run_gh_command(
+        [
+            "gh",
+            "pr",
+            "create",
+            "--repo",
+            repo,
+            "--base",
+            "main",
+            "--head",
+            branch_name,
+            "--title",
+            pr_title,
+            "--body",
+            pr_body,
+            "--milestone",
+            phase_title,
+        ],
+        check=False,
+    )
+    if pr_url:
+        print(f"  > Created PR: {pr_url}")
+    else:
+        print(f"  > PR not created for {branch_name}. This can happen when no diff exists against main.")
+    return pr_url
 
 
 def sync_to_github(phases, repo: str, branch_word: str):
-    """Creates Milestones and Issues in GitHub."""
     print(f"Syncing to repository: {repo}...")
 
     for phase in phases:
-        # Create Milestone
-        print(f"Creating Milestone: {phase['title']}")
-        milestone_cmd = [
-            "gh",
-            "api",
-            f"repos/{repo}/milestones",
-            "-f",
-            f"title={phase['title']}",
-            "--jq",
-            ".number",
-        ]
-        milestone_number = run_gh_command(milestone_cmd)
+        milestone = ensure_milestone(repo, phase["title"])
 
-        if not milestone_number:
-            print(f"Skipping issues for {phase['title']} due to milestone error.")
-            continue
-
-        print(f"  > Created Milestone #{milestone_number}")
-
-        # Create Issues for each week in this phase
         for week in phase["weeks"]:
-            print(f"  Creating Issue: {week['title']}")
-            issue_cmd = [
-                "gh",
-                "issue",
-                "create",
-                "--repo",
-                repo,
-                "--title",
-                week["title"],
-                "--body",
-                week["body"],
-                "--milestone",
-                phase["title"],
-                "--label",
-                "enhancement",
-            ]
+            upsert_issue(repo, week["title"], week["body"], milestone["title"])
 
-            issue_url = run_gh_command(issue_cmd)
-            if issue_url:
-                print(f"    > Created Issue: {issue_url}")
-
-            # Rate limiting pause
-            time.sleep(1)
-
-        # Create Milestone Branch (Integration Branch)
-        # Format: milestone/<one-word>/phase-N
-        branch_name = _select_unique_branch_name(repo, phase["number"], branch_word)
-        print(f"Creating Integration Branch: {branch_name} from main...")
-
-        # Get main branch SHA
-        main_sha = run_gh_command([
-            "gh",
-            "api",
-            f"repos/{repo}/git/ref/heads/main",
-            "--jq",
-            ".object.sha",
-        ])
-
-        if main_sha:
-            tree_sha = run_gh_command([
-                "gh",
-                "api",
-                f"repos/{repo}/git/commits/{main_sha}",
-                "--jq",
-                ".tree.sha",
-            ])
-
-            if tree_sha:
-                empty_commit_msg = (
-                    f"chore: start milestone {branch_word} phase-{phase['number']}"
-                )
-                new_commit_sha = run_gh_command([
-                    "gh",
-                    "api",
-                    f"repos/{repo}/git/commits",
-                    "-f",
-                    f"message={empty_commit_msg}",
-                    "-f",
-                    f"tree={tree_sha}",
-                    "-f",
-                    f"parents[]={main_sha}",
-                    "--jq",
-                    ".sha",
-                ])
-
-                if new_commit_sha:
-                    created_ref = run_gh_command([
-                        "gh",
-                        "api",
-                        f"repos/{repo}/git/refs",
-                        "-f",
-                        f"ref=refs/heads/{branch_name}",
-                        "-f",
-                        f"sha={new_commit_sha}",
-                    ])
-                    if created_ref is not None:
-                        print(f"  > Created Remote Branch: {branch_name} (with empty commit)")
-                    else:
-                        print(f"  > Failed to create remote ref for {branch_name}")
-                else:
-                    print("  > Failed to create empty commit. Skipping branch creation.")
-            else:
-                print("  > Failed to get tree SHA. Skipping branch creation.")
-        else:
-            print("  > Failed to get main SHA. Skipping branch creation.")
-
-        # Create Milestone PR
-        print(f"  Creating Pull Request for {branch_name}...")
-        if _open_pr_exists(repo, branch_name):
-            print(f"    > Open PR already exists for {branch_name}, skipping.")
-        else:
-            pr_title = f"[{phase['title']}] Integration PR"
-            pr_body = (
-                f"Integration PR for **{phase['title']}**.\\n"
-                "All related feature branches for this milestone will be merged into this phase branch before a final release to `main`."
-            )
-            pr_url = run_gh_command([
-                "gh",
-                "pr",
-                "create",
-                "--repo",
-                repo,
-                "--base",
-                "main",
-                "--head",
-                branch_name,
-                "--title",
-                pr_title,
-                "--body",
-                pr_body,
-                "--milestone",
-                phase["title"],
-            ])
-            if pr_url:
-                print(f"    > Created PR: {pr_url}")
+        branch_name = ensure_branch(repo, phase["number"], branch_word)
+        ensure_integration_pr(repo, phase["title"], branch_name)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync task list to GitHub Milestones and Issues.")
+    parser = argparse.ArgumentParser(description="Sync task list to GitHub milestones and issues.")
     parser.add_argument("--file", type=str, required=True, help="Path to the task list markdown file.")
     parser.add_argument("--repo", type=str, required=True, help="Target GitHub repository (owner/repo).")
     parser.add_argument(

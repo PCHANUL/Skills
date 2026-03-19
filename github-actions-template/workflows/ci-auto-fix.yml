@@ -1,0 +1,45 @@
+name: CI with Auto-Fix
+
+on:
+  pull_request:
+    branches: [ "main", "milestone/*" ]
+
+jobs:
+  test-and-fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Required to post comments
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Setup your environment here ---
+      # Example for Node.js:
+      # - name: Setup Node
+      #   uses: actions/setup-node@v4
+      #   with: { node-version: 18 }
+      # - name: Install dependencies
+      #   run: npm ci
+
+      - name: Run Tests
+        id: run_tests
+        # Replace this with your actual test command
+        run: |
+          echo "Running tests..."
+          # npm test 
+
+      - name: Trigger Auto-Fix Agent
+        # Run only if the previous test step failed
+        if: failure() && steps.run_tests.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          COMMENT_BODY="/agent The CI tests failed for this PR. Please analyze the failure and fix the code. You can find the CI logs here: $RUN_URL"
+          
+          echo "Test failed. Triggering Agent via PR comment on PR #$PR_NUMBER..."
+          gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"

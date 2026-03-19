@@ -68,7 +68,8 @@ The user has selected the following approach for the project plan:
 "{chosen_option}"
 
 Generate a highly detailed, phase-based project task list in Markdown format. 
-The output MUST follow this exact structure, using Phases, Weeks, and Specific Tasks.
+The output MUST be issue-ready. Assume each week may be assigned to a different implementer who has not read prior weeks.
+Every week section must contain enough context to execute independently.
 Use deep technical context and be as specific as possible. Do not output anything except the markdown content.
 
 # [Project Name] Detailed Todo List
@@ -78,17 +79,47 @@ Use deep technical context and be as specific as possible. Do not output anythin
 
 ## 📋 Phase 1: [Phase Name] (Week 1-X)
 ### Week 1: [Week Goal]
-#### 1.1 [Category - e.g., UI Components]
+**Why this week exists**
+- [Explain why this week matters now]
+
+**Read first**
+- [Exact spec or architecture docs to read first]
+
+**Current code reality**
+- [Describe the current implementation or current gap]
+
+**Target outcome**
+- [Describe what must be true when the week is done]
+
+#### 1.1 [Category - e.g., Contracts / Data Model / Services]
 - [ ] [Specific Task 1]
 - [ ] [Specific Task 2]
-  ```bash
-  # Optional command or code snippet context
-  ```
 
-#### 1.2 [Category - e.g., Logic & State]
+#### 1.2 [Category - e.g., Business Logic / APIs / Repositories]
 - [ ] [Specific Task A]
 
-... continue for all necessary phases, weeks, and tasks. Make sure the plan is comprehensive and ready for execution.
+#### 1.3 [Category - e.g., UI / Testing / Migration]
+- [ ] [Specific Task B]
+
+**Files likely touched**
+- `[path/to/file]`
+
+**Out of scope**
+- [What this week must not try to solve]
+
+**Definition of done**
+- [Observable completion condition]
+
+**Verification**
+- `[command]`
+- [Manual scenario]
+
+Continue for all necessary phases and weeks.
+Important requirements:
+- Every week must include all of the week-level sections above.
+- Prefer exact file paths, exact document references, and explicit migration boundaries where applicable.
+- If the project is a refactor or migration, explicitly state the legacy shape and target shape in `Current code reality` and `Target outcome`.
+- The plan must be directly suitable for conversion into GitHub week issues without requiring additional context from chat history.
 """
     print("\n[AI] Generating detailed PROJECT_TODO.md... This might take a moment.\n")
     # Using a model with larger context window and better formatting capabilities if possible, but default is fine

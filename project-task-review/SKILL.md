@@ -1,42 +1,74 @@
 ---
 name: project-task-review
-description: "Automates the verification phase: Automated Code Review (Lint + Context-aware LLM Analysis) and PR Checks."
+description: "Reviews implementation work against the stored week-issue context: validates completion criteria, runs verification checks, and prepares review-ready context for PR feedback."
 ---
 
 # Project Task Review Skill
 
-This skill acts as your automated Quality Assurance engineer. It reviews Pull Requests not just for syntax errors, but for architectural compliance and logic issues by analyzing code within its full file context.
+This skill is the QA and review layer for the week-issue workflow. It should not review code in a vacuum. It must compare the implementation against:
+- `Target outcome`
+- `Definition of done`
+- `Verification`
+- remaining tasks in `TASK_PROGRESS.md`
+
+Use this skill after implementation and before merge.
 
 ## Capabilities
 
-1.  **Analyze PR (`analyze_pr`)**: 
-    -   Fetches the Diff of a PR.
-    -   Identifies changed files and retrieves their **full content** for context.
-    -   Runs project-specific linters (e.g., `flutter analyze`).
-    -   (Agent-Driven) Uses the context to generate a code review based on `CONVENTIONS.md`.    
-2.  **Post Review (`post_review`)**:
-    -   Posts the generated review comments to the PR using `gh pr review`.
-    -   Can approve, request changes, or simply comment.
+1.  **Mechanical Review (`review.py`)**:
+    - Reads `TASK_PROGRESS.md`.
+    - Fails review when tracked tasks are incomplete.
+    - Runs verification commands from the issue context or explicit CLI arguments.
+    - Produces a pass/fail result that `project-driver` can consume.
+
+2.  **Context Bundle (`qa_review.py analyze`)**:
+    - Fetches changed files for a PR.
+    - Loads the stored issue context and relevant full file contents.
+    - Produces a structured bundle for a deeper agent review.
+
+3.  **Post Review (`post_review`)**:
+    - Uses the review result to comment, approve, or request changes on the PR.
 
 ## Instructions
 
 ### Prerequisites
--   `gh` CLI authenticated.
--   `git` installed.
--   A `docs/CONVENTIONS.md` file in your repository (recommended for better reviews).
+- `gh` CLI authenticated.
+- `git` installed.
+- `TASK_PROGRESS.md` available when possible.
+- `docs/CONVENTIONS.md` is optional but still useful.
 
 ### Usage
 
-#### 1. Analyze a Pull Request
-This command gathers all necessary context (Diff + Full Files + Linter Output) and prepares a prompt for the Agent to perform the review.
-
+#### 1. Mechanical Review
 ```bash
-python3 ~/Skills/project-review/scripts/qa_review.py analyze --pr <pr_number>
+python3 skills/project-task-review/scripts/review.py \
+  --pr <pr_number> \
+  --progress-file TASK_PROGRESS.md \
+  --use-progress-verification \
+  --json
 ```
 
-**Agent Action**: The script outputs a structured prompt. The Agent should read this, perform the review using its intelligence, and then use `post_review` (or `gh` directly) to submit feedback.
+This is the fast gate. It checks incomplete tasks and verification status before human or agent review.
 
-#### 2. Post a Review Comment (Shortcut)
+#### 2. Deep Review Context
+```bash
+python3 skills/project-task-review/scripts/qa_review.py analyze \
+  --pr <pr_number> \
+  --progress-file TASK_PROGRESS.md
+```
+
+This produces a structured review bundle that includes issue context plus changed file contents.
+
+#### 3. Post a Review Comment
 ```bash
 gh pr review <pr_number> --comment --body "Review feedback..."
 ```
+
+## Review Standard
+
+The reviewer should explicitly answer:
+1. Does the implementation match the `Target outcome`?
+2. Are all tracked sub-tasks complete?
+3. Is the `Definition of done` actually satisfied?
+4. Were the required verification steps run, and did they pass?
+5. Are there regressions or scope leaks outside the intended week boundary?

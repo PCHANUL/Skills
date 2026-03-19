@@ -1,22 +1,24 @@
 ---
 name: project-setup
-description: A skill for automating GitHub Milestones and Issues creation based on a structured task list (from task-manager).
+description: A skill for automating GitHub milestones, week issues, and integration PR setup from a detailed project todo document, while generating assignee-ready issue bodies.
 ---
 
 # Project Setup Skill
 
 This skill bridges the gap between your planned task list and GitHub issue tracking.
-It parses a Markdown plan (Phase -> Week) and creates GitHub milestones/issues.
+It parses a Markdown plan (Phase -> Week) and syncs milestones/issues/PR scaffolding.
+
+It is designed for handoff-ready execution: each generated week issue should be clear enough for someone unfamiliar with prior context.
 
 ## Capabilities
 
 1. **Parse Task List**: Reads markdown with `## Phase` and `### Week` structure.
-2. **Create Milestones**: Converts each Phase into a GitHub Milestone.
-3. **Create Issues**: Converts each Week into a GitHub Issue linked to the matching milestone.
-4. **Assignee-Ready Issue Bodies (Default)**: Builds detailed issue descriptions so someone unfamiliar with the codebase can execute safely.
-5. **Milestone Branch/PR Setup**: Creates milestone integration branches and PRs when applicable.
-   - Branch format: `milestone/<one-word>/phase-N`
-   - If branch already exists, auto-renames to a unique variant (e.g., `milestone/<one-word>2/phase-N`)
+2. **Assignee-Ready Issue Bodies (Default)**: Builds detailed issue descriptions so a different contributor can execute safely.
+3. **Create or Reuse Milestones**: Converts each Phase into a GitHub Milestone and reuses existing ones on reruns.
+4. **Create or Update Week Issues**: Upserts issues by week title instead of duplicating.
+5. **Integration Branch/PR Setup**:
+- Branch format: `milestone/<one-word>/phase-N`
+- If a branch already exists, auto-renames to a unique variant (for example `milestone/<one-word>2/phase-N`)
 
 ## Issue Quality Standard (Required)
 
@@ -34,13 +36,14 @@ The issue body must include:
 - `검증 방법 (commands + manual checks)`
 - `리스크/주의사항`
 
-If a source week section is missing, the script injects actionable fallback content rather than leaving the issue sparse.
+If source week content is sparse, the script injects actionable fallback sections.
 
 ## Prerequisites
 
 1. Ensure `gh` CLI is authenticated (`gh auth status`).
 2. Have a target repository.
 3. Have a task list markdown file (for example `PROJECT_TODO.md`).
+4. Prefer a planning document where each week is already written as an issue-ready section.
 
 ## Usage
 
@@ -65,8 +68,40 @@ python3 ~/Skills/project-setup/scripts/sync_to_github.py \
   --simple-issues
 ```
 
-## Notes
+## Expected Input Format
 
-- Prefer the detailed mode unless explicitly asked otherwise.
-- When the same milestone branch name already exists, the script must choose a new branch name using the same format.
-- Keep generated issue language aligned with the task list language (Korean docs -> Korean issue bodies).
+```markdown
+### Week 1: Schema Alignment & Type Contracts
+
+**Why this week exists**
+- ...
+
+**Read first**
+- ...
+
+**Current code reality**
+- ...
+
+**Target outcome**
+- ...
+
+#### 1.1 Data Model
+- [ ] ...
+
+**Files likely touched**
+- `...`
+
+**Definition of done**
+- ...
+
+**Verification**
+- `...`
+```
+
+## Sync Behavior
+
+- Milestones are reused when the same phase title exists.
+- Week issues are updated when the same week title exists.
+- Integration branch names always follow `milestone/<one-word>/phase-N`.
+- If the target branch name already exists, the script picks a unique branch name with a numeric suffix.
+- PR creation is attempted after branch creation; when no diff exists, PR creation can be skipped by GitHub.
