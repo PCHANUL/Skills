@@ -397,7 +397,7 @@ def get_existing_issues(repo: str) -> Dict[str, dict]:
     return issue_map
 
 
-def upsert_issue(repo: str, title: str, body: str, milestone_title: str):
+def upsert_issue(repo: str, title: str, body: str, milestone_title: str, phase_number: str):
     issues = get_existing_issues(repo)
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
         tmp.write(body)
@@ -421,6 +421,8 @@ def upsert_issue(repo: str, title: str, body: str, milestone_title: str):
                     milestone_title,
                     "--add-label",
                     "enhancement",
+                    "--add-label",
+                    f"phase-{phase_number}",
                 ]
             )
             print(f"  > Updated Issue #{issue_number}")
@@ -442,6 +444,8 @@ def upsert_issue(repo: str, title: str, body: str, milestone_title: str):
                 milestone_title,
                 "--label",
                 "enhancement",
+                "--label",
+                f"phase-{phase_number}",
             ]
         )
         if issue_url:
@@ -577,7 +581,7 @@ def sync_to_github(phases, repo: str, branch_word: str):
         milestone = ensure_milestone(repo, phase["title"])
 
         for week in phase["weeks"]:
-            upsert_issue(repo, week["title"], week["body"], milestone["title"])
+            upsert_issue(repo, week["title"], week["body"], milestone["title"], phase["number"])
 
         branch_name = ensure_branch(repo, phase["number"], branch_word)
         ensure_integration_pr(repo, phase["title"], branch_name)
