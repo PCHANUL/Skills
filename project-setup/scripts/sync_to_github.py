@@ -93,7 +93,7 @@ def _parse_week_sections(raw_lines: List[str]) -> Dict[str, List]:
                 continue
 
             # Bold section header (e.g., **Files likely touched**)
-            bold_match = re.match(r"^\*\*(.+?)\*\*:?")
+            bold_match = re.match(r"^\*\*(.+?)\*\*:?", stripped)
             if bold_match:
                 heading = _normalized_heading(bold_match.group(1))
                 if "files likely touched" in heading or "likely touched" in heading or "관련 파일" in heading:
@@ -387,6 +387,35 @@ def ensure_milestone(repo: str, title: str) -> dict:
     return milestone
 
 
+def _label_exists(repo: str, label_name: str) -> bool:
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/labels/{label_name}"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def ensure_label(repo: str, label_name: str, color: str, description: str):
+    if _label_exists(repo, label_name):
+        return
+
+    print(f"Creating Label: {label_name}")
+    run_gh_command(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/labels",
+            "-f",
+            f"name={label_name}",
+            "-f",
+            f"color={color}",
+            "-f",
+            f"description={description}",
+        ]
+    )
+
+
 def get_existing_issues(repo: str) -> Dict[str, dict]:
     issues = run_gh_json(["gh", "api", f"repos/{repo}/issues?state=all&per_page=200"]) or []
     issue_map = {}
@@ -398,6 +427,10 @@ def get_existing_issues(repo: str) -> Dict[str, dict]:
 
 
 def upsert_issue(repo: str, title: str, body: str, milestone_title: str, phase_number: str):
+    phase_label = f"phase-{phase_number}"
+    ensure_label(repo, "enhancement", "a2eeef", "Feature work")
+    ensure_label(repo, phase_label, "1d76db", f"Tasks for phase {phase_number}")
+
     issues = get_existing_issues(repo)
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
         tmp.write(body)
@@ -422,7 +455,7 @@ def upsert_issue(repo: str, title: str, body: str, milestone_title: str, phase_n
                     "--add-label",
                     "enhancement",
                     "--add-label",
-                    f"phase-{phase_number}",
+                    phase_label,
                 ]
             )
             print(f"  > Updated Issue #{issue_number}")
@@ -445,7 +478,7 @@ def upsert_issue(repo: str, title: str, body: str, milestone_title: str, phase_n
                 "--label",
                 "enhancement",
                 "--label",
-                f"phase-{phase_number}",
+                phase_label,
             ]
         )
         if issue_url:
